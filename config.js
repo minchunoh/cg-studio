@@ -8,6 +8,6 @@
      ★ Claude API 키는 절대 여기 넣지 마세요 — 그건 Vercel 환경변수(ANTHROPIC_API_KEY)로만 넣습니다.
    ============================================================ */
 window.CG_CONFIG = {
-  SUPABASE_URL:  https://lyqodvfvkrpltlcxnpgm.supabase.co/rest/v1/
-  SUPABASE_ANON: sb_publishable_FhI3qo8aPTtU6LiiThtOEQ_ZKlxSNmV
+  SUPABASE_URL:  "https://lyqodvfvkrpltlcxnpgm.supabase.co",
+  SUPABASE_ANON: "sb_publishable_FhI3qo8aPTtU6LiiThtOEQ_ZKlxSNmV"
 };
