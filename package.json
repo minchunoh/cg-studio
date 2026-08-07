@@ -1,0 +1,7 @@
+{
+  "name": "cg-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "한경글로벌TV 머니플러스 CG 스튜디오 — 실시간 협업 방송 CG 제작/송출",
+  "engines": { "node": "20.x" }
+}
