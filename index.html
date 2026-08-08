@@ -28,6 +28,9 @@
   .btn.live{background:#c0392b;color:#fff;}
   .nameIn{background:#0e1524;border:1px solid #2c3a5c;border-radius:7px;color:#e7ecf5;font-size:12px;padding:6px 8px;width:110px;}
   .wrap{flex:1;display:flex;min-height:0;}
+  .split{flex:0 0 6px;cursor:col-resize;background:#141d30;position:relative;}
+  .split:hover,.split.drag{background:#2f66d0;}
+  .split::after{content:'';position:absolute;left:2px;top:50%;transform:translateY(-50%);width:2px;height:26px;border-radius:2px;background:#3a4a6a;}
   .sorter{width:172px;flex:0 0 172px;background:#0e1524;border-right:1px solid #1c2740;overflow-y:auto;padding:10px 9px;}
   .sorter .lab{font-size:11px;color:#7f8db0;font-weight:700;margin:2px 3px 8px;}
   .thumb{position:relative;border:2px solid transparent;border-radius:7px;overflow:hidden;margin-bottom:9px;cursor:pointer;background:#000;}
@@ -79,10 +82,34 @@
   .note{font-size:11px;color:#6f7ea0;line-height:1.5;margin-top:10px;}
   .roomrow{font-size:11px;color:#9fb6e6;margin-top:6px;display:flex;gap:6px;align-items:center;}
   .roomrow code{background:#0e1a30;border:1px solid #24406e;border-radius:5px;padding:2px 6px;color:#cfe0ff;}
-  #present{position:fixed;inset:0;background:#000;z-index:100;display:none;align-items:center;justify-content:center;}
-  #present img{max-width:100%;max-height:100%;}
-  #present .pg{position:absolute;bottom:14px;right:20px;color:#9fb6e6;font-size:13px;}
-  #present .exit{position:absolute;top:14px;right:18px;}
+  /* 송출: 발표자 보기 (현재 크게 + 이전/다음 미리보기) */
+  #present{position:fixed;inset:0;background:#05070c;z-index:100;display:none;flex-direction:column;}
+  #present .pmain{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;}
+  #present .pmain img{max-width:92%;max-height:92%;border-radius:6px;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+  #present .pstrip{height:158px;flex:0 0 158px;display:flex;align-items:center;justify-content:center;gap:30px;background:#0a0d15;border-top:1px solid #1c2740;padding:0 24px;}
+  #present .pcell{display:flex;flex-direction:column;align-items:center;gap:6px;color:#7f8db0;font-size:12px;font-weight:700;}
+  #present .pcell img{height:104px;border-radius:6px;border:1px solid #223;background:#000;opacity:.75;}
+  #present .pcell.cur img{opacity:1;border-color:#5aa0ff;}
+  #present .pcenter{color:#cfe0ff;text-align:center;min-width:120px;}
+  #present .pcenter .n{font-size:30px;font-weight:800;}
+  #present .pcenter .clk{font-size:14px;color:#7f8db0;margin-top:4px;}
+  #present .pcenter .tr{font-size:11px;color:#5aa0ff;margin-top:6px;}
+  #present .exit{position:absolute;top:14px;right:18px;z-index:5;}
+  /* 송출 전환/모션 */
+  @keyframes tFade{from{opacity:0}to{opacity:1}}
+  @keyframes tZoom{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:scale(1)}}
+  @keyframes tWipeR{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+  @keyframes tPushL{from{transform:translateX(70px);opacity:.15}to{transform:translateX(0);opacity:1}}
+  @keyframes tUp{from{transform:translateY(46px);opacity:0}to{transform:translateY(0);opacity:1}}
+  @keyframes tFlip{from{transform:perspective(1200px) rotateY(28deg);opacity:0}to{transform:perspective(1200px) rotateY(0);opacity:1}}
+  /* 단축키 도움말 */
+  #keys{position:fixed;inset:0;background:rgba(4,7,14,.72);z-index:150;display:none;align-items:center;justify-content:center;}
+  #keys .box{background:#111a2c;border:1px solid #2c3a5c;border-radius:14px;padding:22px 26px;max-width:520px;color:#dfe8fb;}
+  #keys h3{font-size:15px;margin-bottom:12px;color:#5aa0ff;}
+  #keys table{font-size:13px;border-collapse:collapse;width:100%;}
+  #keys td{padding:5px 10px;border-bottom:1px solid #1c2740;}
+  #keys kbd{background:#232e46;border-radius:5px;padding:2px 7px;font-family:monospace;font-size:12px;}
+  .reqItem .rrecall{margin-left:6px;border:none;background:transparent;color:#ff8fb0;font-size:10px;cursor:pointer;text-decoration:underline;}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1b2740;color:#dfe8fb;padding:9px 16px;border-radius:9px;font-size:13px;opacity:0;transition:.3s;z-index:200;}
 </style></head>
 <body>
@@ -93,21 +120,26 @@
     <div class="who" id="who"></div>
     <button class="btn g" id="addBtn2">＋ 슬라이드</button>
     <button class="btn g" id="shareBtn">🔗 초대링크</button>
+    <button class="btn g" id="keysBtn" title="단축키">⌨</button>
     <button class="btn g" id="expImg">🖼 이미지</button>
     <button class="btn g" id="expPpt">📄 PPT</button>
     <button class="btn live" id="presentBtn">▶ 송출</button>
   </div>
   <div class="wrap">
     <div class="sorter" id="sorter"><div class="lab">슬라이드 (드래그로 순서)</div></div>
+    <div class="split" id="splitL" title="드래그해 폭 조절"></div>
     <div class="center">
       <div class="stageWrap">
         <div id="stage"><img id="stageImg" src=""></div>
         <div id="cursors"></div>
       </div>
       <div class="transport">
-        <span class="lab">화면 전환</span>
+        <span class="lab">모션(전환)</span>
         <select class="tr" id="trSel"></select>
+        <button class="btn g" id="applyAllTr" style="padding:5px 9px;font-size:11px;">전체 적용</button>
         <button class="btn g" id="addText" style="margin-left:14px;">＋ 텍스트</button>
+        <button class="btn g" id="dupSlideBtn" title="복제 (Ctrl+D)">⧉ 복제</button>
+        <button class="btn g" id="delSlideBtn" title="이 슬라이드 삭제 (Del)" style="background:#3a2233;color:#ff9aa8;">🗑 슬라이드 삭제</button>
         <span class="lab" id="ovHint" style="margin-left:14px;color:#6f7ea0;">글자를 얹어 폰트·크기·색·위치 직접 수정 (선택 후 아래 툴바)</span>
         <div id="ovTools" style="display:none;align-items:center;gap:7px;margin-left:auto;">
           <span class="lab">크기</span><button class="ovb" data-a="fs-">−</button><span id="ovFs" style="font-size:12px;min-width:26px;text-align:center;">28</span><button class="ovb" data-a="fs+">＋</button>
@@ -116,6 +148,7 @@
         </div>
       </div>
     </div>
+    <div class="split" id="splitR" title="드래그해 폭 조절"></div>
     <div class="side">
       <h4>👥 접속 중</h4>
       <div id="userList"></div>
@@ -138,7 +171,26 @@
       <input type="file" id="attFileIn" style="display:none">
     </div>
   </div>
-  <div id="present"><img id="presImg"><div class="pg" id="presPg"></div><button class="btn g exit" id="presExit">✕ 나가기 (Esc)</button></div>
+  <div id="present">
+    <button class="btn g exit" id="presExit">✕ 나가기 (Esc)</button>
+    <div class="pmain"><img id="presImg"></div>
+    <div class="pstrip">
+      <div class="pcell" id="pPrevCell">◀ 이전<img id="pPrev"></div>
+      <div class="pcenter"><div class="n" id="presPg">1 / 1</div><div class="clk" id="presClk"></div><div class="tr" id="presTr"></div></div>
+      <div class="pcell" id="pNextCell">다음 ▶<img id="pNext"></div>
+    </div>
+  </div>
+  <div id="keys"><div class="box">
+    <h3>⌨ 단축키 (파워포인트식)</h3>
+    <table>
+      <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>이전 / 다음 슬라이드 선택</td><td><kbd>F5</kbd></td><td>처음부터 송출</td></tr>
+      <tr><td><kbd>PgUp</kbd> / <kbd>PgDn</kbd></td><td>이전 / 다음 슬라이드</td><td><kbd>Shift</kbd>+<kbd>F5</kbd></td><td>현재부터 송출</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>슬라이드 복제</td><td><kbd>Del</kbd></td><td>슬라이드 삭제</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>새 텍스트 추가</td><td><kbd>Esc</kbd></td><td>선택 해제 / 송출 종료</td></tr>
+      <tr><td><kbd>Enter</kbd></td><td>의뢰 전송 (의뢰판)</td><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>줄바꿈</td></tr>
+    </table>
+    <div style="text-align:right;margin-top:14px;"><button class="btn g" id="keysClose">닫기</button></div>
+  </div></div>
   <div class="toast" id="toast"></div>
 <script src="./kit-render.js"></script>
 <script type="module" src="./app.js"></script>

@@ -17,13 +17,18 @@ const SYSTEM = `당신은 한국경제TV/한경글로벌TV '머니플러스'의 
 - 데이터 그래프·표·순위·타임라인 등 "차트류"는 남색 헤더 + 흰 카드 양식입니다 → type을 bars/line/rank_bars/chart_frame 로.
 - 테마주·관련주 총정리 같은 "박스형 목록"은 type을 theme_grid 로(하늘색 배경, 가운데 정렬, 번호 없음).
 - 인물 말자막/인용은 type을 quote 로.
+- "오늘의 토크 흐름"처럼 주제 순서를 지하철 노선도로 보여주고 현재 주제에 열차 마커를 두는 건 type을 topic_line 으로. stations에 주제들, active에 현재 index.
 - 색은 방송 팔레트만. 임의로 빨강 강조를 넣지 않습니다(강조가 꼭 필요하면 1개만).
 - 제목은 간결하게. 단위/출처를 알면 unit/source에 넣습니다. 숫자는 실제 수치를 그대로.
 - 첨부 이미지가 오면 그 이미지를 그대로 쓰지 말고, 안의 데이터·항목만 읽어 위 킷 타입으로 재구성하세요.
 
 [스펙 스키마] (type에 따라 필요한 필드만)
 {
-  "type": "bars|line|rank_bars|theme_grid|quote|chart_frame",
+  "type": "bars|line|rank_bars|theme_grid|quote|topic_line|chart_frame",
+
+  // topic_line (오늘의 토크 흐름 · 지하철 노선도형)
+  "stations": ["반도체","전력기기","바이오","K뷰티"],
+  "active": 0,
   "title": "제목",
   "unit": "단위(선택)",
   "source": "출처(선택)",

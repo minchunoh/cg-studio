@@ -13,7 +13,8 @@ function getRoom(){ const u=new URL(location.href); let r=u.searchParams.get('ro
 const ROOM=getRoom();
 document.getElementById('roomCode').textContent=ROOM;
 
-const TRANSITIONS={ fade:'디졸브', cut:'컷', wipeR:'와이프 →', pushL:'밀기 ←', zoom:'줌 인' };
+const TRANSITIONS={ fade:'디졸브', cut:'컷', zoom:'줌 인', pushL:'왼쪽으로 밀기', wipeR:'오른쪽 닦기', up:'아래→위', flip:'플립' };
+const ANIM={ fade:'tFade', cut:null, zoom:'tZoom', pushL:'tPushL', wipeR:'tWipeR', up:'tUp', flip:'tFlip' };
 const COLORS=['#5ad1a0','#f0a500','#ff6f91','#5aa0ff','#c792ea','#4ad6d6','#ffd166'];
 const uid='u'+Math.floor(performance.now()*1000%1e9)+Math.floor(1e6*(1/(1+(performance.now()%7))));
 let myName=localStorage.getItem('cg_name')||'';
@@ -24,21 +25,30 @@ const peers=new Map();
 let sb=null;
 
 // ── Sync 레이어 ──
-let Sync;
+let Sync = { mode:'boot', send:()=>{}, on:()=>{} };   // 부팅 전 안전 기본값
+function makeLocalSync(){
+  const ch=new BroadcastChannel('cg-'+ROOM); const subs=[]; ch.onmessage=e=>subs.forEach(f=>f(e.data));
+  return { mode:'local', send:m=>{try{ch.postMessage(m);}catch(_){}} , on:f=>subs.push(f) };
+}
 async function makeSync(){
-  if(CLOUD){
-    const { createClient }=await import('https://esm.sh/@supabase/supabase-js@2');
-    sb=createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON);
-    const ch=sb.channel('cg-'+ROOM,{config:{broadcast:{self:false}}});
-    const subs=[];
-    ch.on('broadcast',{event:'m'},({payload})=>subs.forEach(f=>f(payload)));
-    await ch.subscribe();
-    document.getElementById('envTag').textContent='클라우드'; document.getElementById('envTag').className='env cloud';
-    return { mode:'cloud', send:m=>ch.send({type:'broadcast',event:'m',payload:m}), on:f=>subs.push(f) };
-  } else {
-    const ch=new BroadcastChannel('cg-'+ROOM); const subs=[]; ch.onmessage=e=>subs.forEach(f=>f(e.data));
-    return { mode:'local', send:m=>ch.postMessage(m), on:f=>subs.push(f) };
+  if(!CLOUD) return makeLocalSync();
+  // 클라우드 실패(라이브러리 차단·키 오류·네트워크)해도 사이트가 죽지 않게 → 로컬 모드로 폴백
+  const CDNS=['https://esm.sh/@supabase/supabase-js@2','https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'];
+  for(const url of CDNS){
+    try{
+      const { createClient }=await import(/* @vite-ignore */ url);
+      sb=createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON);
+      const ch=sb.channel('cg-'+ROOM,{config:{broadcast:{self:false}}});
+      const subs=[];
+      ch.on('broadcast',{event:'m'},({payload})=>subs.forEach(f=>f(payload)));
+      await ch.subscribe();
+      const tag=document.getElementById('envTag'); if(tag){ tag.textContent='클라우드'; tag.className='env cloud'; }
+      return { mode:'cloud', send:m=>{try{ch.send({type:'broadcast',event:'m',payload:m});}catch(_){}}, on:f=>subs.push(f) };
+    }catch(e){ console.warn('supabase 연결 실패:',url,e&&e.message); }
   }
+  sb=null;
+  const tag=document.getElementById('envTag'); if(tag){ tag.textContent='로컬(연결 실패)'; tag.className='env local'; tag.title='Supabase 연결 실패 — 오프라인/차단. 편집은 계속 가능'; }
+  return makeLocalSync();
 }
 
 // ── 이미지 저장 (클라우드=Storage, 로컬=dataURL 그대로) ──
@@ -130,13 +140,77 @@ document.getElementById('copyRoom').onclick=()=>{ navigator.clipboard&&navigator
 const nameIn=document.getElementById('nameIn'); nameIn.value=myName;
 nameIn.oninput=()=>{ myName=nameIn.value; localStorage.setItem('cg_name',myName); renderWho(); presence(); };
 
-// 송출
-let presIdx=0;
-function openPresent(){ presIdx=PROJECT.findIndex(x=>x.id===selId); if(presIdx<0)presIdx=0; document.getElementById('present').style.display='flex'; showPres(); }
-function showPres(){ const sl=PROJECT[presIdx]; if(!sl)return; const im=document.getElementById('presImg'); im.style.transition='none'; im.style.opacity='0'; im.src=sl.img; requestAnimationFrame(()=>{ im.style.transition='opacity .4s'; im.style.opacity='1'; }); document.getElementById('presPg').textContent=`${presIdx+1} / ${PROJECT.length}`; }
-document.getElementById('presentBtn').onclick=openPresent;
-document.getElementById('presExit').onclick=()=>document.getElementById('present').style.display='none';
-document.addEventListener('keydown',e=>{ if(document.getElementById('present').style.display!=='flex')return; if(e.key==='ArrowRight'||e.key===' '){presIdx=Math.min(PROJECT.length-1,presIdx+1);showPres();} else if(e.key==='ArrowLeft'){presIdx=Math.max(0,presIdx-1);showPres();} else if(e.key==='Escape'){document.getElementById('present').style.display='none';} });
+// ── 송출 (발표자 보기: 현재 크게 + 이전/다음 미리보기 + 시계 + 모션) ──
+let presIdx=0, clkT=null, presAnimStop=null;
+function presOpen(idx){ presIdx=idx!=null?idx:Math.max(0,PROJECT.findIndex(x=>x.id===selId)); if(presIdx<0)presIdx=0; document.getElementById('present').style.display='flex'; showPres(true); if(!clkT)clkT=setInterval(updClk,1000); updClk(); }
+function presClose(){ document.getElementById('present').style.display='none'; if(clkT){clearInterval(clkT);clkT=null;} if(presAnimStop){presAnimStop();presAnimStop=null;} }
+function updClk(){ const d=new Date(); const el=document.getElementById('presClk'); if(el)el.textContent=d.toLocaleTimeString('ko-KR',{hour12:false}); }
+function showPres(animate){
+  const sl=PROJECT[presIdx]; if(!sl)return;
+  const im=document.getElementById('presImg'); const anim=ANIM[sl.transition]||'tFade';
+  im.style.animation='none'; im.src=sl.img;
+  if(animate!==false && anim){ void im.offsetWidth; im.style.animation=`${anim} .5s ease`; }
+  if(presAnimStop){ presAnimStop(); presAnimStop=null; }
+  if(sl.spec && sl.spec.type==='topic_line' && window.playTopicLine){ presAnimStop=null; window.playTopicLine(im, sl.spec).then(fn=>{ presAnimStop=fn; }); }
+  document.getElementById('presPg').textContent=`${presIdx+1} / ${PROJECT.length}`;
+  document.getElementById('presTr').textContent='모션: '+(TRANSITIONS[sl.transition]||'디졸브');
+  const pv=document.getElementById('pPrev'), nx=document.getElementById('pNext');
+  const p=PROJECT[presIdx-1], n=PROJECT[presIdx+1];
+  if(pv){ pv.src=p?p.img:''; pv.parentElement.style.visibility=p?'visible':'hidden'; }
+  if(nx){ nx.src=n?n.img:''; nx.parentElement.style.visibility=n?'visible':'hidden'; }
+}
+function presGo(d){ const t=Math.max(0,Math.min(PROJECT.length-1,presIdx+d)); if(t!==presIdx){presIdx=t;showPres(true);} }
+document.getElementById('presentBtn').onclick=()=>presOpen();
+document.getElementById('presExit').onclick=presClose;
+document.getElementById('pPrevCell').onclick=()=>presGo(-1);
+document.getElementById('pNextCell').onclick=()=>presGo(1);
+
+// ── 단축키 (파워포인트식) ──
+function typing(){ const a=document.activeElement; return a&&(a.tagName==='TEXTAREA'||a.tagName==='INPUT'||a.isContentEditable); }
+function selShift(d){ const i=PROJECT.findIndex(x=>x.id===selId); const t=Math.max(0,Math.min(PROJECT.length-1,i+d)); selId=PROJECT[t].id; selOv=null; renderAll(); }
+function dupSlide(){ const i=PROJECT.findIndex(x=>x.id===selId); const s=PROJECT[i]; if(!s)return; const c=JSON.parse(JSON.stringify(s)); c.id='s'+Date.now()+Math.floor(Math.random()*999); PROJECT.splice(i+1,0,c); selId=c.id; renderAll(); pushState(); toast('슬라이드 복제'); }
+document.addEventListener('keydown',e=>{
+  const presenting=document.getElementById('present').style.display==='flex';
+  if(presenting){
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();presGo(1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();presGo(-1);}
+    else if(e.key==='Home'){presIdx=0;showPres(true);}
+    else if(e.key==='End'){presIdx=PROJECT.length-1;showPres(true);}
+    else if(e.key==='Escape')presClose();
+    return;
+  }
+  if(e.key==='F5'){ e.preventDefault(); presOpen(e.shiftKey?Math.max(0,PROJECT.findIndex(x=>x.id===selId)):0); return; }
+  if(typing()) return;
+  if((e.ctrlKey||e.metaKey)&&(e.key==='d'||e.key==='D')){ e.preventDefault(); dupSlide(); }
+  else if((e.ctrlKey||e.metaKey)&&(e.key==='m'||e.key==='M')){ e.preventDefault(); document.getElementById('addText').click(); }
+  else if(e.key==='ArrowRight'||e.key==='PageDown'){ e.preventDefault(); selShift(1); }
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); selShift(-1); }
+  else if(e.key==='Delete'||e.key==='Backspace'){ if(selOv){ const sl=curSlide(); sl.overlays=(sl.overlays||[]).filter(x=>x.id!==selOv); selOv=null; renderOverlays(); pushState(); toast('텍스트 삭제'); } else { e.preventDefault(); delSlide(selId); } }
+  else if(e.key==='Escape'){ selOv=null; editingOv=null; renderOverlays(); }
+});
+// 슬라이드 복제·삭제 버튼
+document.getElementById('dupSlideBtn').onclick=()=>dupSlide();
+document.getElementById('delSlideBtn').onclick=()=>delSlide(selId);
+// 패널 폭 조절 (드래그 스플리터) — 저장까지
+function wireSplit(id, targetSel, min, max, key, invert){
+  const el=document.getElementById(id), t=document.querySelector(targetSel); if(!el||!t)return;
+  const saved=parseInt(localStorage.getItem(key)||'',10); if(saved>=min&&saved<=max){ t.style.flex='0 0 '+saved+'px'; t.style.width=saved+'px'; }
+  el.addEventListener('mousedown',e=>{
+    e.preventDefault(); el.classList.add('drag');
+    const sx=e.clientX, sw=t.getBoundingClientRect().width;
+    const mv=ev=>{ let w=sw+(invert?(sx-ev.clientX):(ev.clientX-sx)); w=Math.max(min,Math.min(max,w)); t.style.flex='0 0 '+w+'px'; t.style.width=w+'px'; renderCursors(); renderOverlays(); };
+    const up=()=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); el.classList.remove('drag'); localStorage.setItem(key, String(Math.round(t.getBoundingClientRect().width))); };
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+  });
+  el.addEventListener('dblclick',()=>{ t.style.flex=''; t.style.width=''; localStorage.removeItem(key); renderOverlays(); });
+}
+wireSplit('splitL','.sorter',120,420,'cg_w_sorter',false);
+wireSplit('splitR','.side',200,560,'cg_w_side',true);
+// 모션 전체 적용 + 단축키 도움말
+document.getElementById('applyAllTr').onclick=()=>{ const v=document.getElementById('trSel').value; PROJECT.forEach(s=>s.transition=v); pushState(); toast('모든 슬라이드 모션: '+(TRANSITIONS[v]||v)); };
+document.getElementById('keysBtn').onclick=()=>document.getElementById('keys').style.display='flex';
+document.getElementById('keysClose').onclick=()=>document.getElementById('keys').style.display='none';
+document.getElementById('keys').onclick=e=>{ if(e.target.id==='keys')e.target.style.display='none'; };
 
 // 커서 공유
 const stageWrap=document.querySelector('.stageWrap'); let lastCur=0;
@@ -158,6 +232,13 @@ function renderOverlays(){
     d.style.left=(ov.xf*Wd)+'px'; d.style.top=(ov.yf*Ht)+'px'; d.style.fontSize=(ov.fs*Ht/720)+'px'; d.style.color=ov.color; d.style.fontFamily='"Gmarket Sans","Malgun Gothic",sans-serif';
     d.textContent=ov.text; if(ov.id===editingOv)d.contentEditable=true;
     stage.appendChild(d); wireOverlay(d,ov);
+    if(ov.id===selOv && ov.id!==editingOv){
+      const rz=document.createElement('div'); rz.className='rz'; d.appendChild(rz);
+      rz.addEventListener('mousedown',ev=>{ ev.preventDefault(); ev.stopPropagation(); const sy=ev.clientY, sf=ov.fs;
+        const mv=e2=>{ ov.fs=Math.max(10,Math.min(120,Math.round(sf+(e2.clientY-sy)*0.6))); renderOverlays(); };
+        const up=()=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); pushState(); };
+        document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); });
+    }
   });
   const tools=document.getElementById('ovTools'), hint=document.getElementById('ovHint');
   if(tools){ tools.style.display=selOv?'flex':'none'; if(hint)hint.style.display=selOv?'none':'inline'; }
@@ -206,7 +287,7 @@ async function genFromReq(id){
     const spec=await callGenerate(req);
     const dataURL=await renderKitCG(spec);
     const img=await putImage(dataURL);
-    const sid='s'+Date.now(); PROJECT.push({id:sid,name:spec.title||'의뢰 CG',img,transition:'fade',overlays:[]}); selId=sid;
+    const sid='s'+Date.now(); PROJECT.push({id:sid,name:spec.title||'의뢰 CG',img,transition:'fade',overlays:[],spec:spec}); selId=sid;
     req.status='done'; req.slideId=sid; renderAll(); pushState();
     Sync.send({t:'reqUpd',id,status:'done'}); toast('✅ CG 생성 완료 → 덱에 추가');
   }catch(e){ req.status='err'; renderReq(); Sync.send({t:'reqUpd',id,status:'err'}); toast('생성 오류: '+e.message); }
@@ -216,15 +297,21 @@ function renderReq(){ const el=document.getElementById('reqList'); if(!el)return
     const stTxt=r.status==='done'?'완료':r.status==='gen'?'생성중…':r.status==='err'?'오류':'대기';
     const att=r.att?(r.att.dataURL?`<img class="ratt" src="${r.att.dataURL}">`:`<div class="rfile">📎 ${esc(r.att.name)}</div>`):'';
     const acts=(r.status==='wait'||r.status==='err')?`<div class="racts"><button class="rgen" data-id="${r.id}">🤖 AI 생성</button><button class="rfill" data-id="${r.id}">＋ 직접 첨부</button></div>`:'';
-    return `<div class="reqItem"><div class="rhead"><span class="dot" style="background:${r.color}"></span><span class="nm">${esc(r.user)}</span><span class="st ${r.status}">${stTxt}</span></div>${r.text?`<div class="rtxt">${esc(r.text)}</div>`:''}${att}${acts}</div>`;
+    const mine=r.uid===uid; const recall=mine?`<button class="rrecall" data-del="${r.id}">회수</button>`:'';
+    return `<div class="reqItem"><div class="rhead"><span class="dot" style="background:${r.color}"></span><span class="nm">${esc(r.user)}</span>${recall}<span class="st ${r.status}">${stTxt}</span></div>${r.text?`<div class="rtxt">${esc(r.text)}</div>`:''}${att}${acts}</div>`;
   }).join('');
   el.querySelectorAll('.rgen').forEach(b=>b.onclick=()=>genFromReq(b.dataset.id));
   el.querySelectorAll('.rfill').forEach(b=>b.onclick=()=>fulfill(b.dataset.id));
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>recallReq(b.dataset.del));
   el.scrollTop=el.scrollHeight;
 }
 function renderAttPrev(){ const p=document.getElementById('attPrev'); if(!p)return; p.innerHTML=pendingAtt?`<div class="attChip">${pendingAtt.dataURL?`<img src="${pendingAtt.dataURL}">`:''}${pendingAtt.dataURL?'':esc(pendingAtt.name)}<button id="attClr">×</button></div>`:''; const c=document.getElementById('attClr'); if(c)c.onclick=()=>{pendingAtt=null;renderAttPrev();}; }
-function postReq(){ const ta=document.getElementById('reqText'); const t=ta.value.trim(); if(!t&&!pendingAtt)return; const r={id:'r'+Date.now()+Math.floor(Math.random()*999),user:myName||'익명',color:myColor,text:t,status:'wait',att:pendingAtt}; REQBOARD.push(r); ta.value=''; pendingAtt=null; renderAttPrev(); renderReq(); Sync.send({t:'req',req:r}); toast('의뢰 등록'); }
+function postReq(){ const ta=document.getElementById('reqText'); const t=ta.value.trim(); if(!t&&!pendingAtt)return;
+  if(!myName){ toast('먼저 상단에 이름을 입력하세요'); nameIn.focus(); return; }
+  const r={id:'r'+Date.now()+Math.floor(Math.random()*999),uid,user:myName,color:myColor,text:t,status:'wait',att:pendingAtt}; REQBOARD.push(r); ta.value=''; pendingAtt=null; renderAttPrev(); renderReq(); Sync.send({t:'req',req:r}); toast('의뢰 등록 — '+myName); }
+function recallReq(id){ const r=REQBOARD.find(x=>x.id===id); if(!r||r.uid!==uid)return; REQBOARD=REQBOARD.filter(x=>x.id!==id); renderReq(); Sync.send({t:'reqDel',id}); toast('메시지 회수'); }
 document.getElementById('reqSend').onclick=postReq;
+document.getElementById('reqText').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); postReq(); } });
 document.getElementById('attImg').onclick=()=>document.getElementById('attImgIn').click();
 document.getElementById('attFile').onclick=()=>document.getElementById('attFileIn').click();
 document.getElementById('attImgIn').onchange=e=>{ const f=e.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ pendingAtt={type:'image',name:f.name,dataURL:rd.result}; renderAttPrev(); }; rd.readAsDataURL(f); e.target.value=''; };
@@ -258,6 +345,7 @@ function wireSync(){
     else if(m.t==='req'){ if(!REQBOARD.find(x=>x.id===m.req.id)){ REQBOARD.push(m.req); renderReq(); } }
     else if(m.t==='reqUpd'){ const r=REQBOARD.find(x=>x.id===m.id); if(r){ r.status=m.status; renderReq(); } }
     else if(m.t==='reqAll'){ m.board.forEach(rb=>{ if(!REQBOARD.find(x=>x.id===rb.id))REQBOARD.push(rb); }); renderReq(); }
+    else if(m.t==='reqDel'){ REQBOARD=REQBOARD.filter(x=>x.id!==m.id); renderReq(); }
   });
 }
 window.addEventListener('beforeunload',()=>Sync.send&&Sync.send({t:'bye', id:uid}));
@@ -265,9 +353,10 @@ window.addEventListener('resize', ()=>{ renderCursors(); renderOverlays(); });
 
 // ── 부트 ──
 (async function boot(){
-  Sync=await makeSync();
+  try{ Sync=await makeSync(); }catch(e){ console.warn('sync boot',e); Sync=makeLocalSync(); }
   wireSync();
-  await loadProject();
+  try{ await loadProject(); }catch(e){ console.warn('load',e); }
+  if(!PROJECT.length){ PROJECT=[{id:'s0',name:'빈 슬라이드',img:await renderKitCG({type:'chart_frame',title:'CG 스튜디오',source:'한경글로벌TV',bullets:['오른쪽 의뢰판에서 CG를 요청하세요']}),transition:'fade',overlays:[]}]; selId='s0'; }
   renderAll();
   presence(true);
   setInterval(()=>{ presence(); const now=performance.now(); let ch=false; for(const [k,p] of peers){ if(now-p.last>6000){peers.delete(k);ch=true;} } if(ch){renderWho();renderCursors();} }, 2000);

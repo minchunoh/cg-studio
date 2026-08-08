@@ -1,196 +1,210 @@
 /* ============================================================
-   kit-render.js — 방송 CG 킷 렌더러 (브라우저 캔버스판)
-   KIT_RULES.md 규칙을 캔버스로 구현:
-   · 화면 1280×720 (16:9, 96px/in 환산: render_cg.js 좌표와 동일 스케일)
-   · 티커 안전지대: 콘텐츠 y ∈ [TICKER_TOP, TICKER_BOTTOM]
-   · 차트류(bars/line/rank/table/timeline)는 남색 헤더 + 흰 카드 (chartSlide)
-   · 비차트류(theme_grid/quote/indicator)는 하늘색 배경 (sky)
-   · 서체 G마켓 산스, 가운데 정렬 기본, 자동 빨강 금지(강조는 emphasize 필드로만)
+   kit-render.js — 방송 CG 킷 렌더러 (브라우저 캔버스판)  v2
+   · 실제 방송 배경 사용: bg_card.png(남색 헤더+흰 카드), bg_sky.png(하늘 배경)
+   · render_cg.js 좌표에 정렬 (제목 y=118px, 카드 137~1143, 플롯 154~1109 등)
+   · 티커 안전지대 / G마켓 서체 / 가운데 정렬 / 자동 빨강 금지
    window.renderKitCG(spec) -> Promise<dataURL(png)>
    ============================================================ */
 (function(){
   const W=1280, H=720;
-  const NAVY='#0D004E', NAVY_HDR='#12106E', RED='#C00000', BLUE='#2F6FD6', SKY='#DAE3F3', INK='#111111', GRAY='#5b6577';
-  // 티커 안전지대 (render_cg.js: TICKER.TOP 1.66", BOTTOM 6.42" → px)
-  const TICKER_TOP = Math.round(1.66*96);   // 159
-  const TICKER_BOTTOM = Math.round(6.42*96); // 616
+  const NAVY='#0D004E', RED='#C00000', BLUE='#2F6FD6', INK='#111111', GRAY='#4a5568', NOTE='#26304A';
   const FB='"Gmarket Sans","Malgun Gothic",sans-serif';
-  const bold =(px)=>`700 ${px}px ${FB}`;
-  const med  =(px)=>`500 ${px}px ${FB}`;
-  const light=(px)=>`300 ${px}px ${FB}`;
+  const bold=(px)=>`700 ${px}px ${FB}`, med=(px)=>`500 ${px}px ${FB}`;
 
-  function ensureFonts(){
-    if(!document.fonts||!document.fonts.load) return Promise.resolve();
-    return Promise.all([
-      document.fonts.load('700 40px "Gmarket Sans"'),
-      document.fonts.load('500 24px "Gmarket Sans"'),
-      document.fonts.load('300 20px "Gmarket Sans"')
-    ]).catch(()=>{});
-  }
+  // ── 실측 좌표 (px, 96dpi 환산) ──
+  const CARD_L=137, CARD_R=1143, CARD_W=CARD_R-CARD_L;
+  const HDR_CY=156;
+  const NOTE_Y=206;
+  const LEG_Y=232;
+  const PLOT_X0=178, PLOT_X1=1105;
+  const PLOT_TOP=300, PLOT_BASE=560;
+  const CARD_TOP=200, CARD_BOT=592;
+  const TICKER_TOP=159, TICKER_BOTTOM=616;
+
+  const BG={};
+  function loadImg(src){ return new Promise((res)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src=src; }); }
+  const bgReady=(async()=>{ BG.card=await loadImg('./bg_card.png'); BG.sky=await loadImg('./bg_sky.png'); BG.logo=await loadImg('./moneyplus_logo.png'); })();
+  function ensureFonts(){ if(!document.fonts||!document.fonts.load) return Promise.resolve();
+    return Promise.all([document.fonts.load('700 40px "Gmarket Sans"'),document.fonts.load('500 22px "Gmarket Sans"')]).catch(()=>{}); }
+
   function rr(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
-  function fitFont(g,text,maxW,startPx,minPx,weight){ let px=startPx; do{ g.font=weight==='med'?med(px):bold(px); if(g.measureText(text).width<=maxW)break; px-=1; }while(px>minPx); return px; }
-  function wrapLines(g,text,maxW){ const words=String(text||'').split(/\s+/); const lines=[]; let line=''; for(const w of words){ const t=line?line+' '+w:w; if(g.measureText(t).width>maxW && line){lines.push(line);line=w;} else line=t; } if(line)lines.push(line); return lines; }
-  function nice(max){ if(max<=0)return 1; const p=Math.pow(10,Math.floor(Math.log10(max))); const n=max/p; const s=n<=1?1:n<=2?2:n<=5?5:10; return s*p; }
+  function fit(g,t,maxW,start,min,w){ let px=start; do{ g.font=w==='med'?med(px):bold(px); if(g.measureText(t).width<=maxW)break; px--; }while(px>min); return px; }
+  function wrap(g,t,maxW){ const ws=String(t||'').split(/\s+/); const L=[]; let ln=''; for(const w of ws){ const s=ln?ln+' '+w:w; if(g.measureText(s).width>maxW&&ln){L.push(ln);ln=w;}else ln=s; } if(ln)L.push(ln); return L; }
+  function nice(m){ if(m<=0)return 1; const p=Math.pow(10,Math.floor(Math.log10(m))); const n=m/p; const s=n<=1?1:n<=2?2:n<=5?5:10; return s*p; }
   function fmt(v){ const a=Math.abs(v); if(a>=1e8)return (v/1e8).toLocaleString(undefined,{maximumFractionDigits:1})+'억'; if(a>=1e4&&Number.isInteger(v))return v.toLocaleString(); return (Math.round(v*100)/100).toLocaleString(); }
-
-  // ── 공통: 하늘색 배경 (sky형) ──
-  function skyBg(g){ const grd=g.createLinearGradient(0,0,W,H); grd.addColorStop(0,'#a9c8f2'); grd.addColorStop(1,'#5f8fd6'); g.fillStyle=grd; g.fillRect(0,0,W,H); }
-  // ── 공통: 남색 헤더 + 흰 카드 (chart형) ── 카드 영역 반환
-  function chartFrame(g,title,unit,source){
-    const grd=g.createLinearGradient(0,0,W,H); grd.addColorStop(0,'#c3d4ec'); grd.addColorStop(1,'#93b1da'); g.fillStyle=grd; g.fillRect(0,0,W,H);
-    const CX=137, CW=W-2*137;                 // 카드 좌우 (render_cg CARD_X≈137px)
-    const hdrY=TICKER_TOP+6, hdrH=74;
-    g.fillStyle=NAVY; rr(g,CX,hdrY,CW,hdrH,10); g.fill();
-    g.textAlign='center'; g.textBaseline='middle'; g.fillStyle='#fff';
-    const fp=fitFont(g,title,CW-80,40,26,'bold'); g.font=bold(fp);
-    g.fillText(title,W/2,hdrY+hdrH/2);
-    const cardY=hdrY+hdrH+8, cardBottom=TICKER_BOTTOM-6, cardH=cardBottom-cardY;
-    g.fillStyle='rgba(255,255,255,.97)'; rr(g,CX,cardY,CW,cardH,14); g.fill();
-    // 단위(좌) · 출처(우)
-    g.textBaseline='alphabetic'; g.font=med(17);
-    if(unit){ g.textAlign='left'; g.fillStyle=GRAY; g.fillText('단위 : '+unit, CX+22, cardY+30); }
-    if(source){ g.textAlign='right'; g.fillStyle=GRAY; g.fillText('자료 : '+source, CX+CW-22, cardY+30); }
-    return {x:CX+34, y:cardY+ (unit||source?46:24), w:CW-68, h:cardH-(unit||source?66:44), cardY, cardH, CX, CW, cardBottom};
-  }
-  function skyTitle(g,title,unit,source){
-    g.textAlign='center'; g.textBaseline='middle';
-    const fp=fitFont(g,title,W-160,42,28,'bold'); g.font=bold(fp);
-    g.lineJoin='round'; g.strokeStyle='#fff'; g.lineWidth=6; g.strokeText(title,W/2,TICKER_TOP+30);
-    g.fillStyle=INK; g.fillText(title,W/2,TICKER_TOP+30);
-    if(unit||source){ g.font=med(16); g.fillStyle='#26304a';
-      const s=[unit?'단위 : '+unit:'',source?'자료 : '+source:''].filter(Boolean).join('   ');
-      g.fillText(s, W/2, TICKER_TOP+66); }
-  }
-
   const PALETTE=['#22B7CB','#B24A7C','#2F6FD6','#F0A500','#5AA0A0','#8E7CC3'];
 
-  // ── bars: 세로 막대(단일/그룹) ──
-  function drawBars(g,spec){
-    const R=chartFrame(g,spec.title,spec.unit,spec.source);
-    const cats=spec.categories||[]; const series=spec.series&&spec.series.length?spec.series:[{name:''}];
-    const data=spec.data||[]; // data[s][c]
-    const all=data.flat().filter(v=>typeof v==='number'); const vmax=nice(Math.max(1,...all));
-    const plotX=R.x+46, plotW=R.w-56, base=R.cardBottom-64, top=R.cardY+ (spec.unit||spec.source?58:34), plotH=base-top;
-    // y축 + 그리드
-    g.textAlign='right'; g.textBaseline='middle'; g.font=med(14); g.strokeStyle='#e3e8f0';
-    for(let i=0;i<=4;i++){ const v=vmax*i/4, y=base-plotH*i/4; g.beginPath(); g.setLineDash([4,4]); g.strokeStyle='#dfe4ee'; g.moveTo(plotX,y); g.lineTo(plotX+plotW,y); g.stroke(); g.setLineDash([]); g.fillStyle=GRAY; g.fillText(fmt(v),plotX-8,y); }
-    const nC=cats.length||1, band=plotW/nC, nS=series.length, gp=Math.min(0.22*band, 14), bw=Math.min((band-gp*2)/nS-6, 78);
-    cats.forEach((cat,ci)=>{
-      const bx0=plotX+band*ci+(band-(bw*nS+6*(nS-1)))/2;
-      for(let si=0;si<nS;si++){ const v=(data[si]&&data[si][ci])||0; const h=plotH*v/vmax; const x=bx0+si*(bw+6);
-        g.fillStyle=(spec.series[si]&&spec.series[si].color)||PALETTE[si%PALETTE.length]; rr(g,x,base-h,bw,h,4); g.fill();
-        g.fillStyle=INK; g.font=bold(16); g.textAlign='center'; g.textBaseline='alphabetic'; g.fillText(fmt(v),x+bw/2,base-h-8); }
-      g.fillStyle=NAVY; g.font=med(17); g.textAlign='center'; g.textBaseline='top'; g.fillText(cat,plotX+band*ci+band/2,base+10);
-    });
-    if(nS>1||spec.series[0].name) legend(g,R,series);
+  function cardBG(g){ if(BG.card)g.drawImage(BG.card,0,0,W,H); else{ g.fillStyle='#8fb0da'; g.fillRect(0,0,W,H); g.fillStyle=NAVY; rr(g,CARD_L,118,CARD_W,75,8); g.fill(); g.fillStyle='#fff'; rr(g,CARD_L,200,CARD_W,392,8); g.fill(); } }
+  function skyBG(g){ if(BG.sky)g.drawImage(BG.sky,0,0,W,H); else{ const gr=g.createLinearGradient(0,0,W,H); gr.addColorStop(0,'#a9c8f2'); gr.addColorStop(1,'#5f8fd6'); g.fillStyle=gr; g.fillRect(0,0,W,H); } }
+
+  function chartHead(g,spec){
+    cardBG(g);
+    g.textAlign='center'; g.textBaseline='middle'; g.fillStyle='#fff';
+    const fp=fit(g,spec.title||'',CARD_W-70,38,23,'bold'); g.font=bold(fp);
+    g.fillText(spec.title||'',W/2,HDR_CY);
+    const parts=[]; if(spec.unit)parts.push('단위 : '+spec.unit); if(spec.source)parts.push((spec.sourceLabel||'자료')+' : '+spec.source);
+    if(parts.length){ g.font=med(15); g.fillStyle=NOTE; g.textBaseline='middle'; g.fillText(parts.join('   '),W/2,NOTE_Y); }
   }
-  // ── line: 꺾은선 ──
-  function drawLine(g,spec){
-    const R=chartFrame(g,spec.title,spec.unit,spec.source);
-    const cats=spec.categories||[]; const series=spec.series&&spec.series.length?spec.series:[{name:''}]; const data=spec.data||[];
-    const all=data.flat().filter(v=>typeof v==='number'); const vmin=Math.min(0,...all), vmax=nice(Math.max(1,...all));
-    const plotX=R.x+46, plotW=R.w-56, base=R.cardBottom-64, top=R.cardY+(spec.unit||spec.source?58:34), plotH=base-top;
-    g.font=med(14); for(let i=0;i<=4;i++){ const v=vmax*i/4, y=base-plotH*i/4; g.setLineDash([4,4]); g.strokeStyle='#dfe4ee'; g.beginPath(); g.moveTo(plotX,y); g.lineTo(plotX+plotW,y); g.stroke(); g.setLineDash([]); g.fillStyle=GRAY; g.textAlign='right'; g.textBaseline='middle'; g.fillText(fmt(v),plotX-8,y); }
-    const nC=cats.length||1, step=nC>1?plotW/(nC-1):0;
-    series.forEach((s,si)=>{ const col=s.color||PALETTE[si%PALETTE.length]; g.strokeStyle=col; g.lineWidth=4; g.beginPath();
-      (data[si]||[]).forEach((v,ci)=>{ const x=plotX+step*ci, y=base-plotH*(v-0)/vmax; if(ci===0)g.moveTo(x,y); else g.lineTo(x,y); });
-      g.stroke();
-      (data[si]||[]).forEach((v,ci)=>{ const x=plotX+step*ci, y=base-plotH*v/vmax; g.fillStyle=col; g.beginPath(); g.arc(x,y,5,0,7); g.fill(); g.fillStyle=INK; g.font=bold(15); g.textAlign='center'; g.textBaseline='alphabetic'; g.fillText(fmt(v),x,y-10); });
-    });
-    g.fillStyle=NAVY; g.font=med(16); g.textAlign='center'; g.textBaseline='top';
-    cats.forEach((c,ci)=>g.fillText(c,plotX+step*ci,base+10));
-    if(series.length>1||series[0].name) legend(g,R,series,'line');
-  }
-  function legend(g,R,series,kind){
+  function legend(g,series,kind){
     const items=series.filter(s=>s.name); if(!items.length)return;
-    g.font=med(16); let tot=0; items.forEach(s=>tot+=g.measureText(s.name).width+40); let lx=W/2-tot/2; const ly=R.cardY+ (R.unit?54:30);
-    const y=R.cardY+30;
-    items.forEach((s,i)=>{ const col=s.color||PALETTE[i%PALETTE.length]; g.fillStyle=col;
-      if(kind==='line'){ g.fillRect(lx, y-2, 22,4); } else { rr(g,lx,y-9,16,16,3); g.fill(); }
-      g.fillStyle='#26304a'; g.textAlign='left'; g.textBaseline='middle'; g.fillText(s.name,lx+26,y); lx+=g.measureText(s.name).width+40; });
+    g.font=med(16); let tot=0; items.forEach(s=>tot+=g.measureText(s.name).width+42); let x=W/2-tot/2; const y=LEG_Y;
+    items.forEach((s,i)=>{ const c=s.color||PALETTE[i%PALETTE.length]; g.fillStyle=c;
+      if(kind==='line'){ g.fillRect(x,y-2,22,4); g.beginPath(); g.arc(x+11,y,4,0,7); g.fill(); } else { rr(g,x,y-8,16,16,3); g.fill(); }
+      g.fillStyle=NOTE; g.textAlign='left'; g.textBaseline='middle'; g.fillText(s.name,x+26,y); x+=g.measureText(s.name).width+42; });
   }
 
-  // ── rank_bars: 가로 순위 막대 (빨강) ──
+  function drawBars(g,spec){
+    chartHead(g,spec);
+    const cats=spec.categories||[]; const series=spec.series&&spec.series.length?spec.series:[{name:''}]; const data=spec.data||[];
+    const hasLeg=series.length>1||series[0].name; const top=hasLeg?PLOT_TOP:CARD_TOP+40;
+    const all=data.flat().filter(v=>typeof v==='number'); const vmax=nice(Math.max(1,...all));
+    const base=PLOT_BASE, plotH=base-top;
+    g.font=med(14);
+    for(let i=0;i<=4;i++){ const v=vmax*i/4,y=base-plotH*i/4; g.setLineDash([4,5]); g.strokeStyle='#d7deea'; g.beginPath(); g.moveTo(PLOT_X0,y); g.lineTo(PLOT_X1,y); g.stroke(); g.setLineDash([]); g.fillStyle=GRAY; g.textAlign='right'; g.textBaseline='middle'; g.fillText(fmt(v),PLOT_X0-8,y); }
+    const nC=cats.length||1, band=(PLOT_X1-PLOT_X0)/nC, nS=series.length, bw=Math.min((band*0.72)/nS, 82);
+    cats.forEach((cat,ci)=>{ const cx=PLOT_X0+band*(ci+0.5), grp=bw*nS+8*(nS-1), x0=cx-grp/2;
+      for(let si=0;si<nS;si++){ const v=(data[si]&&data[si][ci])||0,h=plotH*v/vmax,x=x0+si*(bw+8);
+        g.fillStyle=(series[si]&&series[si].color)||PALETTE[si%PALETTE.length]; rr(g,x,base-h,bw,h,4); g.fill();
+        g.fillStyle=INK; g.font=bold(16); g.textAlign='center'; g.textBaseline='alphabetic'; g.fillText(fmt(v),x+bw/2,base-h-8); }
+      g.fillStyle=NAVY; g.font=med(17); g.textAlign='center'; g.textBaseline='top'; g.fillText(cat,cx,base+10);
+    });
+    if(hasLeg) legend(g,series,'bar');
+  }
+  function drawLine(g,spec){
+    chartHead(g,spec);
+    const cats=spec.categories||[]; const series=spec.series&&spec.series.length?spec.series:[{name:''}]; const data=spec.data||[];
+    const hasLeg=series.length>1||series[0].name; const top=hasLeg?PLOT_TOP:CARD_TOP+40;
+    const all=data.flat().filter(v=>typeof v==='number'); const vmax=nice(Math.max(1,...all)); const base=PLOT_BASE, plotH=base-top;
+    g.font=med(14);
+    for(let i=0;i<=4;i++){ const v=vmax*i/4,y=base-plotH*i/4; g.setLineDash([4,5]); g.strokeStyle='#d7deea'; g.beginPath(); g.moveTo(PLOT_X0,y); g.lineTo(PLOT_X1,y); g.stroke(); g.setLineDash([]); g.fillStyle=GRAY; g.textAlign='right'; g.textBaseline='middle'; g.fillText(fmt(v),PLOT_X0-8,y); }
+    const nC=cats.length||1, step=nC>1?(PLOT_X1-PLOT_X0)/(nC-1):0;
+    series.forEach((s,si)=>{ const c=s.color||PALETTE[si%PALETTE.length]; g.strokeStyle=c; g.lineWidth=4; g.beginPath();
+      (data[si]||[]).forEach((v,ci)=>{ const x=PLOT_X0+step*ci,y=base-plotH*v/vmax; ci?g.lineTo(x,y):g.moveTo(x,y); }); g.stroke();
+      (data[si]||[]).forEach((v,ci)=>{ const x=PLOT_X0+step*ci,y=base-plotH*v/vmax; g.fillStyle=c; g.beginPath(); g.arc(x,y,5,0,7); g.fill(); g.fillStyle=INK; g.font=bold(15); g.textAlign='center'; g.textBaseline='alphabetic'; g.fillText(fmt(v),x,y-10); }); });
+    g.fillStyle=NAVY; g.font=med(16); g.textAlign='center'; g.textBaseline='top'; cats.forEach((c,ci)=>g.fillText(c,PLOT_X0+step*ci,base+10));
+    if(hasLeg) legend(g,series,'line');
+  }
   function drawRank(g,spec){
-    const R=chartFrame(g,spec.title,spec.unit,spec.source);
+    chartHead(g,spec);
     const ranks=(spec.ranks||[]).slice(0,7); const vmax=Math.max(1,...ranks.map(r=>r.value||0));
-    const rowH=Math.min(58,(R.h-10)/Math.max(1,ranks.length)-10), gap=10;
-    const nameW=190, x0=R.x+nameW+16, barMax=R.w-nameW-120;
-    let y=R.y+6;
+    const top=CARD_TOP+34, rowH=Math.min(56,(CARD_BOT-top)/Math.max(1,ranks.length)-10), gap=10;
+    const x0=CARD_L+230, barMax=CARD_R-x0-90; let y=top;
     ranks.forEach((r,i)=>{
-      g.fillStyle=i===0?RED:NAVY; g.beginPath(); g.arc(R.x+18,y+rowH/2,15,0,7); g.fill();
-      g.fillStyle='#fff'; g.font=bold(17); g.textAlign='center'; g.textBaseline='middle'; g.fillText(String(i+1),R.x+18,y+rowH/2);
-      g.fillStyle=NAVY; g.font=bold(19); g.textAlign='left'; g.fillText(r.label||'',R.x+40,y+rowH/2);
-      const bw=barMax*(r.value||0)/vmax; g.fillStyle=i===0?RED:'#2F6FD6'; rr(g,x0,y+6,Math.max(bw,4),rowH-12,5); g.fill();
+      g.fillStyle=i===0?RED:NAVY; g.beginPath(); g.arc(CARD_L+40,y+rowH/2,15,0,7); g.fill();
+      g.fillStyle='#fff'; g.font=bold(17); g.textAlign='center'; g.textBaseline='middle'; g.fillText(String(i+1),CARD_L+40,y+rowH/2);
+      g.fillStyle=NAVY; g.font=bold(19); g.textAlign='left'; g.fillText(r.label||'',CARD_L+62,y+rowH/2);
+      const bw=Math.max(barMax*(r.value||0)/vmax,4); g.fillStyle=i===0?RED:'#2F6FD6'; rr(g,x0,y+6,bw,rowH-12,5); g.fill();
       g.fillStyle='#fff'; g.font=bold(17); g.textAlign='right'; g.fillText(fmt(r.value)+(spec.suffix||''),x0+bw-10,y+rowH/2);
       y+=rowH+gap;
     });
   }
-
-  // ── theme_grid: 박스 그리드 (sky형, 가운데 정렬, 번호 없음) ──
+  function drawFrame(g,spec){
+    chartHead(g,spec);
+    const bullets=spec.bullets||(spec.body?[spec.body]:[]); g.textAlign='left'; g.textBaseline='top'; let y=CARD_TOP+46;
+    bullets.forEach(b=>{ g.fillStyle=RED; g.beginPath(); g.arc(CARD_L+40,y+14,5,0,7); g.fill();
+      g.fillStyle='#233'; g.font=med(24); wrap(g,b,CARD_W-120).forEach(ln=>{ g.fillText(ln,CARD_L+58,y); y+=34; }); y+=12; });
+  }
+  function skyTitle(g,title,sub){
+    g.textAlign='center'; g.textBaseline='middle'; const fp=fit(g,title,W-180,42,26,'bold'); g.font=bold(fp);
+    g.lineJoin='round'; g.strokeStyle='#fff'; g.lineWidth=6; g.strokeText(title,W/2,118); g.fillStyle=INK; g.fillText(title,W/2,118);
+    if(sub){ g.font=med(16); g.fillStyle='#22345a'; g.fillText(sub,W/2,156); }
+  }
   function drawGrid(g,spec){
-    skyBg(g); skyTitle(g,spec.title,spec.unit,spec.source);
-    // cards: [{name,desc}] 또는 groups:[{cat,items:[...]}]
-    let cards=[];
-    if(spec.groups&&spec.groups.length){ cards=spec.groups.map(gp=>({name:gp.cat, desc:(gp.items||[]).join(' · ')})); }
+    skyBG(g);
+    const sub=[spec.unit?'단위 : '+spec.unit:'',spec.source?'자료 : '+spec.source:''].filter(Boolean).join('   ');
+    skyTitle(g,spec.title,sub);
+    let cards=[]; if(spec.groups&&spec.groups.length) cards=spec.groups.map(gp=>({name:gp.cat,desc:(gp.items||[]).join(' · ')}));
     else cards=(spec.cards||[]).map(c=>({name:c.name,desc:c.desc||''}));
-    const n=cards.length||1;
-    // 열 수 자동: 목록형(설명 길면) 2줄 우선
-    let cols = spec.cols || (n<=3?n : n<=8?Math.ceil(n/2) : Math.ceil(n/2));
-    cols=Math.min(cols, 5, n);
-    const rows=Math.ceil(n/cols);
-    const areaX=90, areaW=W-180, areaTop=TICKER_TOP+80, areaBot=TICKER_BOTTOM-10, areaH=areaBot-areaTop;
-    const cgap=18, rgap=16;
-    const cardW=(areaW-cgap*(cols-1))/cols, cardH=(areaH-rgap*(rows-1))/rows;
-    cards.forEach((c,i)=>{
-      const r=Math.floor(i/cols), cIdx=i%cols;
-      const inRow=(r===rows-1 && n%cols!==0)?(n%cols):cols;
-      const rowOff=(cols-inRow)/2*(cardW+cgap);
-      const x=areaX+rowOff+cIdx*(cardW+cgap), y=areaTop+r*(cardH+rgap);
-      g.fillStyle='rgba(255,255,255,.96)'; rr(g,x,y,cardW,cardH,12); g.fill();
-      g.strokeStyle='rgba(13,0,78,.12)'; g.lineWidth=1.5; g.stroke();
-      // 상단 남색 띠 (종목명)
-      const hH=Math.max(34,Math.min(56,cardH*0.4));
-      g.fillStyle=NAVY; rr(g,x,y,cardW,hH,12); g.fill(); g.fillStyle=NAVY; g.fillRect(x,y+hH-12,cardW,12);
-      g.fillStyle='#fff'; g.textAlign='center'; g.textBaseline='middle';
-      const np=fitFont(g,c.name,cardW-20,22,13,'bold'); g.font=bold(np); g.fillText(c.name,x+cardW/2,y+hH/2);
-      // 본문 설명 (가운데)
-      g.fillStyle='#243043'; g.font=med(16); g.textBaseline='top';
-      const lines=wrapLines(g,c.desc,cardW-24).slice(0,4); const lh=22; const by=y+hH+ (cardH-hH-lines.length*lh)/2;
-      lines.forEach((ln,li)=>g.fillText(ln,x+cardW/2,by+li*lh));
+    const n=cards.length||1; let cols=spec.cols||(n<=3?n:Math.ceil(n/2)); cols=Math.min(cols,5,n); const rows=Math.ceil(n/cols);
+    const aX=92,aW=W-184,aTop=TICKER_TOP+30,aBot=TICKER_BOTTOM-8,aH=aBot-aTop,cg=18,rg=16;
+    const cw=(aW-cg*(cols-1))/cols, ch=(aH-rg*(rows-1))/rows;
+    cards.forEach((c,i)=>{ const r=Math.floor(i/cols),ci=i%cols; const inRow=(r===rows-1&&n%cols!==0)?(n%cols):cols; const off=(cols-inRow)/2*(cw+cg);
+      const x=aX+off+ci*(cw+cg), y=aTop+r*(ch+rg);
+      g.fillStyle='rgba(255,255,255,.97)'; rr(g,x,y,cw,ch,12); g.fill();
+      const hH=Math.max(34,Math.min(56,ch*0.4)); g.fillStyle=NAVY; rr(g,x,y,cw,hH,12); g.fill(); g.fillRect(x,y+hH-12,cw,12);
+      g.fillStyle='#fff'; g.textAlign='center'; g.textBaseline='middle'; const np=fit(g,c.name,cw-20,22,13,'bold'); g.font=bold(np); g.fillText(c.name,x+cw/2,y+hH/2);
+      g.fillStyle='#243043'; g.font=med(16); g.textBaseline='top'; const L=wrap(g,c.desc,cw-24).slice(0,4),lh=22,by=y+hH+(ch-hH-L.length*lh)/2; L.forEach((ln,li)=>g.fillText(ln,x+cw/2,by+li*lh));
     });
   }
-
-  // ── quote: 인용/말자막 (sky형) ──
   function drawQuote(g,spec){
-    skyBg(g);
-    g.fillStyle='rgba(255,255,255,.95)'; rr(g,150,TICKER_TOP+20,W-300,TICKER_BOTTOM-TICKER_TOP-40,18); g.fill();
-    g.fillStyle=SKY; g.font=bold(120); g.textAlign='left'; g.textBaseline='top'; g.fillText('“',185,TICKER_TOP+20);
-    g.fillStyle=NAVY; g.textAlign='center'; g.textBaseline='middle';
-    const fp=fitFont(g,spec.quote||'',W-420,40,24,'bold'); g.font=bold(fp);
-    const lines=wrapLines(g,spec.quote||'',W-420); const cy=(TICKER_TOP+TICKER_BOTTOM)/2 - (spec.who?20:0); const lh=fp*1.3;
-    lines.slice(0,4).forEach((ln,i)=>g.fillText(ln,W/2,cy-(lines.length-1)*lh/2+i*lh));
-    if(spec.who){ g.fillStyle=BLUE; g.font=med(24); g.fillText('— '+spec.who, W/2, TICKER_BOTTOM-70); }
+    skyBG(g);
+    g.fillStyle='rgba(255,255,255,.95)'; rr(g,150,TICKER_TOP+16,W-300,TICKER_BOTTOM-TICKER_TOP-34,18); g.fill();
+    g.fillStyle='#cfe0f5'; g.font=bold(120); g.textAlign='left'; g.textBaseline='top'; g.fillText('“',185,TICKER_TOP+14);
+    g.fillStyle=NAVY; g.textAlign='center'; g.textBaseline='middle'; const fp=fit(g,spec.quote||'',W-420,40,24,'bold'); g.font=bold(fp);
+    const L=wrap(g,spec.quote||'',W-420); const cy=(TICKER_TOP+TICKER_BOTTOM)/2-(spec.who?18:0),lh=fp*1.3;
+    L.slice(0,4).forEach((ln,i)=>g.fillText(ln,W/2,cy-(L.length-1)*lh/2+i*lh));
+    if(spec.who){ g.fillStyle=BLUE; g.font=med(24); g.fillText('— '+spec.who,W/2,TICKER_BOTTOM-64); }
   }
 
-  // ── chart_frame: 범용 (불릿/캡션) ──
-  function drawFrame(g,spec){
-    const R=chartFrame(g,spec.title,spec.unit,spec.source);
-    const bullets=spec.bullets||(spec.body?[spec.body]:[]);
-    g.textAlign='left'; g.textBaseline='top'; let y=R.y+8;
-    bullets.forEach(b=>{ g.fillStyle=RED; g.beginPath(); g.arc(R.x+8,y+13,5,0,7); g.fill();
-      g.fillStyle='#233'; g.font=med(24); const lines=wrapLines(g,b,R.w-40);
-      lines.forEach((ln,i)=>{ g.fillText(ln,R.x+26,y); y+=34; }); y+=10; });
+  function trainMarker(g,x,y,ACC){
+    const w=104,h=48, bx=x-w/2, by=y-h/2;
+    g.fillStyle='#0D2B6B'; rr(g,bx,by,w,h,11); g.fill(); g.lineWidth=1.5; g.strokeStyle='#fff'; g.stroke();
+    g.fillStyle=ACC; rr(g,bx+8,by+5,w-16,10,5); g.fill();
+    const ww=18,wh=16,gap=8,tot=3*ww+2*gap,wx0=x-tot/2,wy=by+21;
+    g.fillStyle='#CDEAF2'; for(let k=0;k<3;k++){ rr(g,wx0+k*(ww+gap),wy,ww,wh,3); g.fill(); }
   }
-
-  const RENDERERS={ bars:drawBars, line:drawLine, rank_bars:drawRank, theme_grid:drawGrid, quote:drawQuote, chart_frame:drawFrame };
-
-  window.renderKitCG = async function(spec){
-    await ensureFonts();
+  function drawTopicLine(g,spec){
+    spec={...spec, title:spec.title||'오늘의 토크 흐름'}; skyBG(g); skyTitle(g,spec.title);
+    const LINE='#123C86',REMAIN='#C4CEE0',ACC='#12B0C6',NODE='#0D2B6B';
+    const st=spec.stations||spec.items||[]; const n=st.length; if(!n)return;
+    const nameOf=s=>typeof s==='string'?s:(s.name||s.text||'');
+    const animate=spec.progress!=null;
+    const prog=Math.max(0,Math.min(n-1, animate?spec.progress:(spec.active!=null?spec.active:0)));
+    const top=Math.ceil(n/2), bot=n-top;
+    const LX=210,RX=1015,RXo=1055,yT=380,yB=560,midY=470; const pos=[];
+    const sT=top>1?(RX-LX)/(top-1):0; for(let i=0;i<top;i++)pos.push({x:top>1?LX+sT*i:(LX+RX)/2,y:yT});
+    const sB=bot>1?(RX-LX)/(bot-1):0; for(let i=0;i<bot;i++)pos.push({x:bot>1?RX-sB*i:(LX+RX)/2,y:yB});
+    const P=[],stationArc=new Array(n);
+    for(let i=0;i<top;i++)P.push({x:pos[i].x,y:yT,st:i});
+    if(bot>0){P.push({x:RXo,y:yT});P.push({x:RXo,y:yB});}
+    for(let i=top;i<n;i++)P.push({x:pos[i].x,y:yB,st:i});
+    const arc=[0]; for(let k=1;k<P.length;k++)arc[k]=arc[k-1]+Math.hypot(P[k].x-P[k-1].x,P[k].y-P[k-1].y);
+    P.forEach((p,k)=>{if(p.st!=null)stationArc[p.st]=arc[k];});
+    const si=Math.floor(prog),sf=prog-si;
+    const trainArc=si>=n-1?stationArc[n-1]:stationArc[si]+(stationArc[si+1]-stationArc[si])*sf;
+    const eps=0.001; let cur=0; for(let i=0;i<n;i++) if(stationArc[i]<=trainArc+eps)cur=i;
+    g.lineWidth=6; g.lineCap='round';
+    for(let k=1;k<P.length;k++){ g.strokeStyle=REMAIN; g.beginPath(); g.moveTo(P[k-1].x,P[k-1].y); g.lineTo(P[k].x,P[k].y); g.stroke(); }
+    for(let k=1;k<P.length;k++){ if(arc[k-1]>=trainArc)break; let ex=P[k].x,ey=P[k].y; if(arc[k]>trainArc){const t=(trainArc-arc[k-1])/(arc[k]-arc[k-1]);ex=P[k-1].x+(P[k].x-P[k-1].x)*t;ey=P[k-1].y+(P[k].y-P[k-1].y)*t;} g.strokeStyle=LINE; g.beginPath(); g.moveTo(P[k-1].x,P[k-1].y); g.lineTo(ex,ey); g.stroke(); }
+    st.forEach((s,i)=>{ const p=pos[i],reached=stationArc[i]<=trainArc+eps,isCur=i===cur,isTop=p.y<midY,rad=isCur?15:11;
+      g.beginPath(); g.arc(p.x,p.y,rad,0,7); g.fillStyle=isCur?ACC:(reached?NODE:'#fff'); g.fill(); g.lineWidth=isCur?3:2.5; g.strokeStyle=NODE; g.stroke();
+      g.fillStyle=isCur?'#11245A':'#3C4A66'; g.font=isCur?bold(23):med(18); g.textAlign='center'; g.textBaseline=isTop?'bottom':'top'; g.fillText(nameOf(s),p.x, isTop?p.y-24:p.y+24);
+    });
+    const activeName=nameOf(st[cur]);
+    g.font=bold(24); const nmW=Math.max(60,g.measureText(activeName).width), lgH=48, lgW=lgH*2.056, inGap=14, padX=22;
+    const pillW=lgW+inGap+nmW+padX*2, pillH=62, pillX=W/2-pillW/2, pillY=148;
+    g.fillStyle='#fff'; rr(g,pillX,pillY,pillW,pillH,31); g.fill(); g.lineWidth=2.5; g.strokeStyle='#0D2B6B'; g.stroke();
+    if(BG.logo) g.drawImage(BG.logo,pillX+padX,pillY+(pillH-lgH)/2,lgW,lgH);
+    g.fillStyle='#11245A'; g.font=bold(24); g.textAlign='left'; g.textBaseline='middle'; g.fillText(activeName,pillX+padX+lgW+inGap,pillY+pillH/2+1);
+    let tx=P[0].x,ty=P[0].y;
+    for(let k=1;k<P.length;k++){ if(trainArc<=arc[k]||k===P.length-1){const d=arc[k]-arc[k-1],t=d?(trainArc-arc[k-1])/d:0;tx=P[k-1].x+(P[k].x-P[k-1].x)*t;ty=P[k-1].y+(P[k].y-P[k-1].y)*t;break;} }
+    trainMarker(g,tx,ty,ACC);
+  }
+  const R={ bars:drawBars, line:drawLine, rank_bars:drawRank, theme_grid:drawGrid, quote:drawQuote, topic_line:drawTopicLine, chart_frame:drawFrame };
+  window.renderKitCG=async function(spec){
+    await bgReady; await ensureFonts();
     const c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d');
-    const fn=RENDERERS[spec&&spec.type]||drawFrame;
-    try{ fn(g,spec||{}); }catch(e){ skyBg(g); g.fillStyle=NAVY; g.font=bold(30); g.textAlign='center'; g.textBaseline='middle'; g.fillText('CG 렌더 오류: '+e.message, W/2, H/2); }
+    const fn=R[spec&&spec.type]||drawFrame;
+    try{ fn(g,spec||{}); }catch(e){ skyBG(g); g.fillStyle=NAVY; g.font=bold(28); g.textAlign='center'; g.textBaseline='middle'; g.fillText('CG 렌더 오류: '+e.message,W/2,H/2); }
     return c.toDataURL('image/png');
   };
-  window.KIT_TYPES = Object.keys(RENDERERS);
+  window.KIT_TYPES=Object.keys(R);
+
+  // 도착 애니메이션(정본 PPT와 동일): 이전 역 → 현재 역까지 2초 가감속으로 1회 재생 후 정지.
+  // 선은 열차 뒤로 채워지고, 끝나면 현재 역 상태로 고정. 정지 함수 반환.
+  window.playTopicLine = async function(imgEl, spec, opts){
+    opts=opts||{};
+    const st=(spec.stations||spec.items||[]); const n=st.length;
+    const active=Math.max(0,Math.min(n-1, spec.active!=null?spec.active:0));
+    const finalSrc=await window.renderKitCG({...spec, progress:active});
+    if(n<2||active<1){ imgEl.src=finalSrc; return ()=>{}; }
+    const from=active-1, dur=opts.dur||2000, steps=opts.steps||16;
+    const ease=t=>t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;             // accel 50% / decel 50%
+    const frames=[];
+    for(let k=0;k<=steps;k++){ const p=from+(active-from)*ease(k/steps); frames.push(await window.renderKitCG({...spec, progress:p})); }
+    let idx=0, stop=false;
+    const tick=()=>{ if(stop)return; if(idx>=frames.length){ imgEl.src=finalSrc; return; } imgEl.src=frames[idx++]; setTimeout(tick, dur/steps); };
+    tick();
+    return ()=>{ stop=true; };
+  };
 })();
