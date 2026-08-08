@@ -557,6 +557,37 @@
   const num=s=>parseFloat(String(s).replace(/[^0-9.\-]/g,''));
   const hasNum=s=>/-?[\d,]+(\.\d+)?/.test(s);
   const cells=s=>s.split(/[,\t]/).map(x=>x.trim()).filter(x=>x!=='');
+  // 지표 항목 인식: 콜론이 없어도, 실무 약칭(필반·브렌트·원달러 등)도 잡는다
+  const IND_MATCH=[
+    ['brent', /브렌트/i],
+    ['wti',   /\bwti\b|서부\s*텍사스|서부텍사스/i],
+    ['night', /야간|야선|선물/],
+    ['sox',   /필반|필라|반도체|\bsox\b/i],
+    ['fx',    /환율|원\s*[·\/-]?\s*달러|원달러/],
+    ['ust',   /10\s*년|국채|금리/],
+    ['ewy',   /\bewy\b|\betf\b|msci|한국\s*etf/i],
+  ];
+  function parseIndicator(lines){
+    const values={}, subs={}; let n=0;
+    lines.forEach(raw=>{
+      let l=String(raw).trim(); if(!l)return;
+      const hit=IND_MATCH.find(([,re])=>re.test(l)); if(!hit)return;
+      const key=hit[0]; if(values[key]!=null)return;
+      // 항목명을 떼고 값만 남긴다. 콜론이 있으면 콜론 뒤, 없으면 키워드 뒤부터.
+      let v;
+      if(/[:：]/.test(l)) v=l.replace(/^[^:：]*[:：]\s*/,'');
+      else { const m=hit[1].exec(l); v=m?l.slice(m.index+m[0].length):l; }
+      // "10년물 4.68%"의 '물'처럼 남은 라벨 조각 제거 → 숫자·부호·통화기호부터가 값
+      v=v.replace(/^[^\d$₩+\-]*/,'').trim();
+      if(!v){ const m2=/([$₩+\-]?[\d][\d,.]*.*)$/.exec(l); v=m2?m2[1].trim():l.trim(); }
+      // 뒤에 붙은 괄호 변동치를 작은 글씨로 분리 (공백 있든 없든)
+      const p=/^(.*?)\s*(\([^)]*\))\s*$/.exec(v);
+      if(p && /\d/.test(p[1]) && /원|pt|포인트/.test(p[2])){ values[key]=p[1].trim(); subs[key]=p[2]; }
+      else values[key]=v;
+      n++;
+    });
+    return {values,subs,count:n};
+  }
   window.kitAuto = function(raw, forceType){
     const all=String(raw||'').split('\n').map(s=>s.trim()).filter(Boolean);
     const meta={}; const body=[];
@@ -571,10 +602,10 @@
     const kv=colonLines.map(l=>{ const i=l.search(/[:：]/); return {k:l.slice(0,i).trim(), v:l.slice(i+1).trim()}; });
     let type=forceType;
     if(!type){
-      const indHits=['etf','ewy','야간','선물','wti','브렌트','반도체','환율','달러','금리','국채'].filter(w=>new RegExp(w,'i').test(txt)).length;
+      const indProbe=parseIndicator(body);   // 콜론 없이 "WTI $77.29(+2.75%)" 형태도 인식
       // 날짜로 시작하는 줄이 2개 이상이면 일지형(3줄 요약보다 먼저 판단해야 함)
       const dateLines=body.filter(l=>/^\s*\d{1,2}\s*[\/\.월]\s*\d{1,2}|^\s*\d{1,2}\/\d{1,2}|\(\s*[월화수목금토일]\s*\)/.test(l)).length;
-      if(indHits>=3 && kv.length>=3) type='indicator';
+      if(indProbe.count>=3) type='indicator';
       else if(dateLines>=2 && body.length>=2) type='timeline';
       else if(/→|->/.test(txt)) type='chevron';
       else if(/[""“”]/.test(txt) && body.length<=3) type='person_quote';
@@ -593,11 +624,8 @@
     const T=(d)=>base.title||d;
     switch(type){
       case 'indicator':{
-        const KEYS=[['ewy',/etf|ewy|msci/i],['night',/야간|선물/],['wti',/wti/i],['brent',/브렌트/],['sox',/반도체|필라|sox/i],['fx',/환율|달러/],['ust',/금리|국채|10년/]];
-        const values={}, subs={};
-        kv.forEach(({k,v})=>{ const hit=KEYS.find(([,re])=>re.test(k)); if(!hit)return;
-          const m=/^(.*?)\s+(\([^)]*\))\s*$/.exec(v); if(m){ values[hit[0]]=m[1].trim(); subs[hit[0]]=m[2]; } else values[hit[0]]=v; });
-        return {...base,title:meta.title||'',values,subs};
+        const r=parseIndicator(body);
+        return {...base,title:meta.title||'',values:r.values,subs:r.subs};
       }
       case 'three_line': return {...base,title:meta.title||'',lines:body.map(l=>l.replace(/^\s*[1-3１-３]\s*[).]\s*/,'')).slice(0,3)};
       case 'person_quote': case 'quote':
