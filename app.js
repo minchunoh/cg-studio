@@ -270,15 +270,17 @@ function makeDemoSpec(req){
   return { type:'chart_frame', title:t, source:'한경글로벌TV',
     bullets: req.att? ['첨부 내용을 킷 규격으로 재작도합니다','실배포 시 Claude가 데이터를 추출해 남색 헤더 차트로 생성'] : ['의뢰 내용을 킷 규격 CG로 생성합니다','실배포 시 Claude API가 연결됩니다'] };
 }
+// Claude 프록시 호출. 실패하면 이유를 그대로 던져서 화면에 보이게 한다(조용한 데모 대체 금지).
 async function callGenerate(req){
-  // 서버리스 Claude 프록시 호출. 실패 시 데모 스펙.
-  try{
-    const res=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ text:req.text||'', image:(req.att&&req.att.dataURL)||null })});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const j=await res.json(); if(!j||!j.spec) throw new Error('no spec');
-    return j.spec;
-  }catch(e){ console.warn('generate fallback',e.message); return makeDemoSpec(req); }
+  const res=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ text:req.text||'', image:(req.att&&req.att.dataURL)||null })});
+  let j=null; try{ j=await res.json(); }catch(_){}
+  if(!res.ok){
+    const msg=(j&&(j.error||j.detail))?String(j.error||'')+(j.detail?(' / '+String(j.detail).slice(0,200)):''):('HTTP '+res.status);
+    throw new Error(msg);
+  }
+  if(!j||!j.spec) throw new Error('스펙 없음'+(j&&j.raw?(' / '+String(j.raw).slice(0,120)):''));
+  return j.spec;
 }
 async function genFromReq(id){
   const req=REQBOARD.find(x=>x.id===id); if(!req||req.status==='gen')return;
@@ -290,7 +292,11 @@ async function genFromReq(id){
     const sid='s'+Date.now(); PROJECT.push({id:sid,name:spec.title||'의뢰 CG',img,transition:'fade',overlays:[],spec:spec}); selId=sid;
     req.status='done'; req.slideId=sid; renderAll(); pushState();
     Sync.send({t:'reqUpd',id,status:'done'}); toast('✅ CG 생성 완료 → 덱에 추가');
-  }catch(e){ req.status='err'; renderReq(); Sync.send({t:'reqUpd',id,status:'err'}); toast('생성 오류: '+e.message); }
+  }catch(e){
+    req.status='err'; req.err=String(e&&e.message||e); renderReq();
+    Sync.send({t:'reqUpd',id,status:'err',err:req.err});
+    toast('생성 오류: '+req.err); console.error('generate error',e);
+  }
 }
 function renderReq(){ const el=document.getElementById('reqList'); if(!el)return;
   el.innerHTML=REQBOARD.slice(-40).map(r=>{
@@ -298,7 +304,8 @@ function renderReq(){ const el=document.getElementById('reqList'); if(!el)return
     const att=r.att?(r.att.dataURL?`<img class="ratt" src="${r.att.dataURL}">`:`<div class="rfile">📎 ${esc(r.att.name)}</div>`):'';
     const acts=(r.status==='wait'||r.status==='err')?`<div class="racts"><button class="rgen" data-id="${r.id}">🤖 AI 생성</button><button class="rfill" data-id="${r.id}">＋ 직접 첨부</button></div>`:'';
     const mine=r.uid===uid; const recall=mine?`<button class="rrecall" data-del="${r.id}">회수</button>`:'';
-    return `<div class="reqItem"><div class="rhead"><span class="dot" style="background:${r.color}"></span><span class="nm">${esc(r.user)}</span>${recall}<span class="st ${r.status}">${stTxt}</span></div>${r.text?`<div class="rtxt">${esc(r.text)}</div>`:''}${att}${acts}</div>`;
+    const errBox=r.err?`<div class="rfile" style="color:#ff9aa8;border-color:#5a2634;background:#2a1420;">⚠ ${esc(r.err)}</div>`:'';
+    return `<div class="reqItem"><div class="rhead"><span class="dot" style="background:${r.color}"></span><span class="nm">${esc(r.user)}</span>${recall}<span class="st ${r.status}">${stTxt}</span></div>${r.text?`<div class="rtxt">${esc(r.text)}</div>`:''}${att}${errBox}${acts}</div>`;
   }).join('');
   el.querySelectorAll('.rgen').forEach(b=>b.onclick=()=>genFromReq(b.dataset.id));
   el.querySelectorAll('.rfill').forEach(b=>b.onclick=()=>fulfill(b.dataset.id));
@@ -343,7 +350,7 @@ function wireSync(){
     else if(m.t==='presence'){ const p=peers.get(m.id)||{}; Object.assign(p,{name:m.name,color:m.color,last:performance.now()}); peers.set(m.id,p); renderWho(); if(m.hello){ Sync.send({t:'state', from:uid, project:PROJECT, selId}); Sync.send({t:'reqAll',board:REQBOARD}); presence(); } }
     else if(m.t==='bye'){ peers.delete(m.id); renderWho(); renderCursors(); }
     else if(m.t==='req'){ if(!REQBOARD.find(x=>x.id===m.req.id)){ REQBOARD.push(m.req); renderReq(); } }
-    else if(m.t==='reqUpd'){ const r=REQBOARD.find(x=>x.id===m.id); if(r){ r.status=m.status; renderReq(); } }
+    else if(m.t==='reqUpd'){ const r=REQBOARD.find(x=>x.id===m.id); if(r){ r.status=m.status; if(m.err)r.err=m.err; renderReq(); } }
     else if(m.t==='reqAll'){ m.board.forEach(rb=>{ if(!REQBOARD.find(x=>x.id===rb.id))REQBOARD.push(rb); }); renderReq(); }
     else if(m.t==='reqDel'){ REQBOARD=REQBOARD.filter(x=>x.id!==m.id); renderReq(); }
   });
