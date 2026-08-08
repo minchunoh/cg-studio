@@ -7,7 +7,7 @@
 @font-face{font-family:'Gmarket Sans';font-weight:300;src:url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansLight.woff') format('woff');font-display:swap;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="./vendor/jszip.min.js"></script>
 <!-- pdf.js는 사내망에서 CDN이 막혀도 되도록 사이트에 함께 담아 쓴다 (vendor/) -->
 <script src="./vendor/pdf.min.js"></script>
 <script src="./config.js" onerror="window.CG_CONFIG=window.CG_CONFIG||{}"></script>
@@ -114,9 +114,9 @@
   #ctx button.dg{color:#ff9aa8;}
   /* 송출 */
   #present{position:fixed;inset:0;background:#05070c;z-index:200;display:none;flex-direction:column;}
-  #present .pmain{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;}
-  #present .pmain img{max-width:100%;max-height:100%;}
-  #present.full .pmain img{width:100%;height:100%;object-fit:contain;}
+  #present .pmain{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;padding:4px;}
+  #present .pstage{position:relative;aspect-ratio:16/9;height:100%;max-height:100%;max-width:100%;}
+  #present .pstage img{width:100%;height:100%;object-fit:contain;display:block;}
   #present .pstrip{height:132px;flex:0 0 132px;display:flex;align-items:center;justify-content:center;gap:24px;background:#080b12;border-top:1px solid #1c2740;padding:0 20px;}
   #present.clean .pstrip{display:none;}
   .pcell{display:flex;flex-direction:column;align-items:center;gap:4px;color:#7f8db0;font-size:11px;font-weight:700;cursor:pointer;}
@@ -139,6 +139,20 @@
   #keys table{font-size:12px;border-collapse:collapse;width:100%;}
   #keys td{padding:4px 9px;border-bottom:1px solid #1c2740;color:#cfe0ff;}
   #keys kbd{background:#232e46;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:11px;}
+  /* 화면 전환 */
+  @keyframes tFade{from{opacity:0}to{opacity:1}}
+  @keyframes tZoom{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:scale(1)}}
+  @keyframes tWipeR{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+  @keyframes tPushL{from{transform:translateX(70px);opacity:.15}to{transform:translateX(0);opacity:1}}
+  @keyframes tUp{from{transform:translateY(46px);opacity:0}to{transform:translateY(0);opacity:1}}
+  @keyframes tFlip{from{transform:perspective(1200px) rotateY(28deg);opacity:0}to{transform:perspective(1200px) rotateY(0);opacity:1}}
+  /* 글자 등장·강조 */
+  @keyframes oPop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
+  @keyframes oFade{from{opacity:0}to{opacity:1}}
+  @keyframes oUp{from{transform:translateY(28px);opacity:0}to{transform:translateY(0);opacity:1}}
+  @keyframes oBlink{0%,100%{opacity:1}25%{opacity:.2}50%{opacity:1}75%{opacity:.2}}
+  #presOv{position:absolute;inset:0;pointer-events:none;z-index:5;}
+  #presOv .po{position:absolute;white-space:pre-wrap;line-height:1.15;padding:1px 3px;}
   .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1b2740;color:#dfe8fb;padding:8px 15px;border-radius:8px;font-size:12px;opacity:0;transition:.3s;z-index:400;pointer-events:none;}
   #busy{position:fixed;inset:0;background:rgba(4,7,14,.6);z-index:350;display:none;align-items:center;justify-content:center;color:#cfe0ff;font-size:14px;font-weight:700;}
 </style></head>
@@ -167,7 +181,8 @@
       <div class="rpage on" data-page="home">
         <div class="grp"><span class="lab">가져오기</span>
           <button class="btn" id="impImg">🖼 이미지</button>
-          <button class="btn" id="impPdf">📄 PDF(PPT 저장본)</button>
+          <button class="btn" id="impPpt">📊 PPT</button>
+          <button class="btn" id="impPdf">📄 PDF</button>
         </div>
         <div class="grp"><span class="lab">슬라이드</span>
           <button class="btn" id="dupSlideBtn">⧉ 복제</button>
@@ -226,8 +241,22 @@
           <button class="btn" id="applyAllTr">전체 적용</button>
           <button class="btn" id="prevTr">▶ 미리보기</button>
         </div>
-        <div class="grp"><span class="lab">지하철 CG</span>
-          <span style="font-size:11px;color:#6f7ea0;">노선도 슬라이드는 송출에서 열차 이동이 자동 재생됩니다</span>
+        <div class="grp"><span class="lab">요소 모션</span>
+          <select id="buildSel">
+            <option value="auto">자동 (막대 자라기 / 선 그리기 / 열차 이동)</option>
+            <option value="off">없음 (완성 상태로 표시)</option>
+          </select>
+          <button class="btn" id="prevBuild">▶ 요소 모션 미리보기</button>
+        </div>
+        <div class="grp"><span class="lab">글자 등장</span>
+          <select id="ovAnimSel">
+            <option value="">없음</option>
+            <option value="pop">팝 (튀어나옴)</option>
+            <option value="fade">서서히</option>
+            <option value="up">아래에서 위로</option>
+            <option value="blink">강조 깜빡임</option>
+          </select>
+          <span style="font-size:10px;color:#6f7ea0;">선택한 글자에 적용 · 송출에서 재생</span>
         </div>
       </div>
       <!-- 송출 -->
@@ -301,6 +330,7 @@
       </div>
       <input type="file" id="fileImg" accept="image/*" multiple style="display:none">
       <input type="file" id="filePdf" accept="application/pdf" style="display:none">
+      <input type="file" id="filePpt" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" style="display:none">
       <input type="file" id="fileFulfill" accept="image/*,application/pdf" multiple style="display:none">
       <input type="file" id="fileAttImg" accept="image/*" style="display:none">
       <input type="file" id="fileAtt" style="display:none">
@@ -315,7 +345,7 @@
       <button class="btn" id="presClean">미리보기 숨김</button>
       <button class="btn" id="presExit">✕ 종료 (Esc)</button>
     </div>
-    <div class="pmain"><img id="presImg"></div>
+    <div class="pmain"><div class="pstage"><img id="presImg"><div id="presOv"></div></div></div>
     <div class="pstrip">
       <div class="pcell" id="pPrevCell">◀ 이전<img id="pPrev"></div>
       <div class="pcenter"><div class="n" id="presPg">1 / 1</div><div class="clk" id="presClk"></div><div class="tr" id="presTr"></div></div>

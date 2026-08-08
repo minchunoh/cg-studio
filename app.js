@@ -171,8 +171,72 @@ async function importPDF(file){
     if(last){ selId=last; renderAll(); pushState(); toast(`PDF ${pdf.numPages}장 → 슬라이드 추가`); }
   }catch(e){ busy(false); toast('PDF 오류: '+(e&&e.message||e)); }
 }
+/* PPTX 직접 가져오기.
+   ⚠ 원리: PPT는 '그림'이 아니라 도형·글자·효과가 든 설계도라, 브라우저에서 파워포인트처럼
+   똑같이 그려내는 건 불가능하다. 다만 '슬라이드 전체를 덮는 이미지 한 장'으로 된 장(예: 이 사이트에서
+   내보낸 PPT, 이미지형 CG)은 그 이미지를 그대로 꺼내 완벽히 복원할 수 있다.
+   도형·글자로 그려진 장은 복원 불가 → 그 장 수를 세어 PDF로 저장하도록 안내한다. */
+async function importPPTX(file){
+  if(!window.JSZip){ toast('압축 라이브러리 로드 실패 — 인터넷 확인'); return; }
+  try{
+    busy(true,'PPT 읽는 중…');
+    const zip=await JSZip.loadAsync(await file.arrayBuffer());
+    const pres=await zip.file('ppt/presentation.xml').async('string');
+    const sz=/<p:sldSz[^>]*cx="(\d+)"[^>]*cy="(\d+)"/.exec(pres);
+    const SW=sz?+sz[1]:12192000, SH=sz?+sz[2]:6858000, AREA=SW*SH;
+    // 슬라이드 순서
+    const prels=await zip.file('ppt/_rels/presentation.xml.rels').async('string');
+    const relMap={}; for(const m of prels.matchAll(/Id="(rId\d+)"[^>]*Target="([^"]+)"/g)) relMap[m[1]]=m[2];
+    const order=[...pres.matchAll(/<p:sldId[^>]*r:id="(rId\d+)"/g)]
+      .map(m=>relMap[m[1]]).filter(Boolean)
+      .map(t=>('ppt/'+t.replace(/^\.\.\//,'')).replace('ppt/ppt/','ppt/'));
+    const mime=n=>/\.png$/i.test(n)?'image/png':/\.jpe?g$/i.test(n)?'image/jpeg':/\.gif$/i.test(n)?'image/gif':'image/png';
+    let ok=0, bad=0, last=null;
+    for(let i=0;i<order.length;i++){
+      busy(true,`PPT ${i+1} / ${order.length} 장 확인 중…`);
+      const sPath=order[i]; const sf=zip.file(sPath); if(!sf){ bad++; continue; }
+      const xml=await sf.async('string');
+      const rPath=sPath.replace(/slides\//,'slides/_rels/')+'.rels';
+      const rf=zip.file(rPath); const rmap={};
+      if(rf){ const rx=await rf.async('string');
+        for(const m of rx.matchAll(/Id="(rId\d+)"[^>]*Target="([^"]+)"/g)) rmap[m[1]]=m[2]; }
+      // 슬라이드를 덮는 가장 큰 그림 찾기
+      let best=null;
+      for(const pm of xml.matchAll(/<p:pic>[\s\S]*?<\/p:pic>/g)){
+        const blk=pm[0];
+        const emb=/r:embed="(rId\d+)"/.exec(blk); if(!emb)continue;
+        const ext=/<a:ext cx="(\d+)" cy="(\d+)"/.exec(blk); if(!ext)continue;
+        const cover=(+ext[1]*+ext[2])/AREA;
+        if(!best||cover>best.cover) best={rid:emb[1],cover};
+      }
+      // ★ 그림 위에 도형·글자가 얹혀 있으면 그림만 가져가면 내용이 사라진다 → 불가 처리
+      const shapeCnt=(xml.match(/<p:sp>/g)||[]).length;
+      const textCnt=[...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].filter(m=>m[1].trim()).length;
+      const picCnt=(xml.match(/<p:pic>/g)||[]).length;
+      const vectorContent = shapeCnt>0 || textCnt>0 || picCnt>1;
+      if(vectorContent){ bad++; continue; }
+      if(best&&best.cover>=0.9&&rmap[best.rid]){
+        const mp=('ppt/'+rmap[best.rid].replace(/^\.\.\//,'')).replace('ppt/ppt/','ppt/');
+        const mf=zip.file(mp);
+        if(mf){
+          const b64=await mf.async('base64');
+          last=addSlide(await putImage(`data:${mime(mp)};base64,${b64}`), `${file.name.replace(/\.pptx$/i,'')} ${i+1}`);
+          ok++; continue;
+        }
+      }
+      bad++;
+    }
+    busy(false);
+    if(ok){ selId=last; renderAll(); pushState(); }
+    if(ok&&!bad) toast(`PPT ${ok}장 → 슬라이드 추가`);
+    else if(ok&&bad) toast(`${ok}장 불러옴 · ${bad}장은 도형/글자라 못 읽음 → 그 장들은 PDF로 저장해 넣어주세요`);
+    else toast('이 PPT는 도형·글자로 그려져 있어 직접 못 읽습니다 — PowerPoint에서 PDF로 저장해 넣어주세요');
+  }catch(e){ busy(false); toast('PPT 오류: '+(e&&e.message||e)); }
+}
 $('impImg').onclick=()=>$('fileImg').click();
 $('impPdf').onclick=()=>$('filePdf').click();
+$('impPpt').onclick=()=>$('filePpt').click();
+$('filePpt').onchange=e=>{ const f=e.target.files[0]; if(f)importPPTX(f); e.target.value=''; };
 $('fileImg').onchange=e=>{ importImages(e.target.files); e.target.value=''; };
 $('filePdf').onchange=e=>{ const f=e.target.files[0]; if(f)importPDF(f); e.target.value=''; };
 // 무대에 끌어다 놓기
@@ -180,6 +244,7 @@ const sw=$('stageWrap');
 sw.addEventListener('dragover',e=>{ e.preventDefault(); });
 sw.addEventListener('drop',e=>{ e.preventDefault(); const fs=[...(e.dataTransfer.files||[])];
   const pdf=fs.find(f=>f.type==='application/pdf'); if(pdf){ importPDF(pdf); return; }
+  const ppt=fs.find(f=>/\.pptx$/i.test(f.name)); if(ppt){ importPPTX(ppt); return; }
   if(fs.length) importImages(fs); });
 
 /* ── 텍스트 오버레이 ── */
@@ -217,6 +282,7 @@ function syncTextUI(){
   const o=selOvObjs()[0]; if(!o)return;
   $('ovFs').value=Math.round(o.fs); $('ovFont').value=o.fw||'700';
   $('ovStroke').classList.toggle('on',!!o.stroke); $('ovShadow').classList.toggle('on',!!o.shadow);
+  const a=$('ovAnimSel'); if(a) a.value=o.anim||'';
 }
 function showGuides(lines){ $('guides').innerHTML=lines.map(l=>l.v
   ? `<div style="left:${l.p}%;top:0;width:1px;height:100%"></div>`
@@ -349,6 +415,13 @@ $('trSel').onchange=e=>{ const s=curSlide(); if(s){ s.transition=e.target.value;
 $('applyAllTr').onclick=()=>{ const v=$('trSel').value; PROJECT.forEach(s=>s.transition=v); pushState(); toast('전체 모션: '+TRANSITIONS[v]); };
 $('prevTr').onclick=()=>{ const s=curSlide(); const a=ANIM[s&&s.transition]||'tFade'; const im=$('stageImg');
   im.style.animation='none'; void im.offsetWidth; if(a) im.style.animation=a+' .6s ease'; };
+$('prevBuild').onclick=async()=>{ const s=curSlide();
+  if(!s||!s.spec){ toast('이 슬라이드는 이미지라 요소 모션이 없습니다 (킷 CG에서만 가능)'); return; }
+  if(!window.playKitMotion){ toast('모션 기능 로드 실패'); return; }
+  const im=$('stageImg'); const stop=await window.playKitMotion(im,s.spec);
+  setTimeout(()=>{ if(stop)stop(); im.src=s.img; }, 4000); };
+$('ovAnimSel').onchange=e=>{ const v=e.target.value; applyOv(o=>o.anim=v||undefined);
+  toast(v?('글자 등장 효과: '+e.target.selectedOptions[0].textContent):'글자 등장 효과 없음'); };
 
 /* ── 이름 / 초대 / 커서 ── */
 const nameIn=$('nameIn'); nameIn.value=myName;
@@ -385,10 +458,29 @@ function showPres(animate){
   const p=PROJECT[presIdx-1], n=PROJECT[presIdx+1];
   $('pPrev').src=p?p.img:''; $('pPrev').parentElement.style.visibility=p?'visible':'hidden';
   $('pNext').src=n?n.img:''; $('pNext').parentElement.style.visibility=n?'visible':'hidden';
-  // 지하철 노선도면 열차 도착 애니메이션 1회
-  if(sl.spec&&sl.spec.type==='topic_line'&&window.playTopicLine){
-    window.playTopicLine(im,sl.spec).then(fn=>{ animStop=fn; });
+  // 킷 CG(스펙 있음)면 요소 모션 재생: 막대 자라기 / 선 그리기 / 열차 이동
+  if(sl.spec&&window.playKitMotion&&$('buildSel').value!=='off'){
+    window.playKitMotion(im,sl.spec).then(fn=>{ animStop=fn; });
   }
+  renderPresOverlays(sl);
+}
+// 송출 화면에 얹은 글자 표시 + 등장 효과 재생
+const OVANIM={pop:'oPop .6s ease both',fade:'oFade .8s ease both',up:'oUp .6s ease both',blink:'oBlink 1.2s ease 2'};
+function renderPresOverlays(sl){
+  const box=$('presOv'); if(!box)return; box.innerHTML='';
+  const H=box.clientHeight||720;
+  (sl.overlays||[]).forEach((ov,i)=>{
+    const d=document.createElement('div'); d.className='po';
+    d.style.left=(ov.xf*100)+'%'; d.style.top=(ov.yf*100)+'%';
+    d.style.fontSize=(ov.fs*H/720)+'px'; d.style.color=ov.color;
+    d.style.fontFamily='"Gmarket Sans","Malgun Gothic",sans-serif'; d.style.fontWeight=ov.fw||'700';
+    d.style.textAlign=ov.align||'left';
+    if(ov.stroke){ d.style.webkitTextStroke=Math.max(1,(ov.fs*H/720)*0.09)+'px #fff'; d.style.paintOrder='stroke fill'; }
+    if(ov.shadow) d.style.textShadow='2px 2px 5px rgba(60,80,120,.55)';
+    d.textContent=ov.text;
+    if(ov.anim&&OVANIM[ov.anim]){ d.style.animation=OVANIM[ov.anim]; d.style.animationDelay=(0.25+i*0.25)+'s'; }
+    box.appendChild(d);
+  });
 }
 function presGo(d){ const t=Math.max(0,Math.min(PROJECT.length-1,presIdx+d)); if(t!==presIdx){ presIdx=t; showPres(true); } }
 $('presentBtn').onclick=()=>presOpen(0);

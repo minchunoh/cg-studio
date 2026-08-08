@@ -36,6 +36,17 @@
   function fmt(v){ const a=Math.abs(v); if(a>=1e8)return (v/1e8).toLocaleString(undefined,{maximumFractionDigits:1})+'억'; if(a>=1e4&&Number.isInteger(v))return v.toLocaleString(); return (Math.round(v*100)/100).toLocaleString(); }
   const PALETTE=['#22B7CB','#B24A7C','#2F6FD6','#F0A500','#5AA0A0','#8E7CC3'];
 
+  // ── 요소 모션(빌드) ──
+  // spec.build = 0~1. 없으면 1(완성 상태). 항목별로 시차를 둬 "차례로 자라나는" 느낌을 낸다.
+  function stagger(spec,i,n){
+    const b=spec&&spec.build; if(b==null) return 1;
+    if(n<=1) return Math.max(0,Math.min(1,b));
+    const span=0.55, step=(1-span)/(n-1);           // 앞 항목부터 순차 시작
+    const t=(b-step*i)/span;
+    return Math.max(0,Math.min(1,t));
+  }
+  const easeOut=t=>1-Math.pow(1-t,3);
+
   function cardBG(g){ if(BG.card)g.drawImage(BG.card,0,0,W,H); else{ g.fillStyle='#8fb0da'; g.fillRect(0,0,W,H); g.fillStyle=NAVY; rr(g,CARD_L,118,CARD_W,75,8); g.fill(); g.fillStyle='#fff'; rr(g,CARD_L,200,CARD_W,392,8); g.fill(); } }
   function skyBG(g){ if(BG.sky)g.drawImage(BG.sky,0,0,W,H); else{ const gr=g.createLinearGradient(0,0,W,H); gr.addColorStop(0,'#a9c8f2'); gr.addColorStop(1,'#5f8fd6'); g.fillStyle=gr; g.fillRect(0,0,W,H); } }
 
@@ -65,9 +76,10 @@
     for(let i=0;i<=4;i++){ const v=vmax*i/4,y=base-plotH*i/4; g.setLineDash([4,5]); g.strokeStyle='#d7deea'; g.beginPath(); g.moveTo(PLOT_X0,y); g.lineTo(PLOT_X1,y); g.stroke(); g.setLineDash([]); g.fillStyle=GRAY; g.textAlign='right'; g.textBaseline='middle'; g.fillText(fmt(v),PLOT_X0-8,y); }
     const nC=cats.length||1, band=(PLOT_X1-PLOT_X0)/nC, nS=series.length, bw=Math.min((band*0.72)/nS, 82);
     cats.forEach((cat,ci)=>{ const cx=PLOT_X0+band*(ci+0.5), grp=bw*nS+8*(nS-1), x0=cx-grp/2;
-      for(let si=0;si<nS;si++){ const v=(data[si]&&data[si][ci])||0,h=plotH*v/vmax,x=x0+si*(bw+8);
+      for(let si=0;si<nS;si++){ const v=(data[si]&&data[si][ci])||0, k=stagger(spec,ci,nC), h=plotH*v/vmax*k, x=x0+si*(bw+8);
+        if(k<=0) continue;
         g.fillStyle=(series[si]&&series[si].color)||PALETTE[si%PALETTE.length]; rr(g,x,base-h,bw,h,4); g.fill();
-        g.fillStyle=INK; g.font=bold(16); g.textAlign='center'; g.textBaseline='alphabetic'; g.fillText(fmt(v),x+bw/2,base-h-8); }
+        if(k>0.85){ g.globalAlpha=Math.min(1,(k-0.85)/0.15); g.fillStyle=INK; g.font=bold(16); g.textAlign='center'; g.textBaseline='alphabetic'; g.fillText(fmt(v),x+bw/2,base-h-8); g.globalAlpha=1; } }
       g.fillStyle=NAVY; g.font=med(17); g.textAlign='center'; g.textBaseline='top'; g.fillText(cat,cx,base+10);
     });
     if(hasLeg) legend(g,series,'bar');
@@ -80,9 +92,15 @@
     g.font=med(14);
     for(let i=0;i<=4;i++){ const v=vmax*i/4,y=base-plotH*i/4; g.setLineDash([4,5]); g.strokeStyle='#d7deea'; g.beginPath(); g.moveTo(PLOT_X0,y); g.lineTo(PLOT_X1,y); g.stroke(); g.setLineDash([]); g.fillStyle=GRAY; g.textAlign='right'; g.textBaseline='middle'; g.fillText(fmt(v),PLOT_X0-8,y); }
     const nC=cats.length||1, step=nC>1?(PLOT_X1-PLOT_X0)/(nC-1):0;
-    series.forEach((s,si)=>{ const c=s.color||PALETTE[si%PALETTE.length]; g.strokeStyle=c; g.lineWidth=4; g.beginPath();
+    const bld=(spec&&spec.build!=null)?Math.max(0,Math.min(1,spec.build)):1;   // 선이 좌→우로 그려짐
+    const cutX=PLOT_X0+(PLOT_X1-PLOT_X0)*easeOut(bld);
+    series.forEach((s,si)=>{ const c=s.color||PALETTE[si%PALETTE.length];
+      g.save(); g.beginPath(); g.rect(PLOT_X0-8,0,Math.max(0,cutX-PLOT_X0+8),H); g.clip();
+      g.strokeStyle=c; g.lineWidth=4; g.beginPath();
       (data[si]||[]).forEach((v,ci)=>{ const x=PLOT_X0+step*ci,y=base-plotH*v/vmax; ci?g.lineTo(x,y):g.moveTo(x,y); }); g.stroke();
-      (data[si]||[]).forEach((v,ci)=>{ const x=PLOT_X0+step*ci,y=base-plotH*v/vmax; g.fillStyle=c; g.beginPath(); g.arc(x,y,5,0,7); g.fill(); g.fillStyle=INK; g.font=bold(15); g.textAlign='center'; g.textBaseline='alphabetic'; g.fillText(fmt(v),x,y-10); }); });
+      (data[si]||[]).forEach((v,ci)=>{ const x=PLOT_X0+step*ci,y=base-plotH*v/vmax; if(x>cutX)return;
+        g.fillStyle=c; g.beginPath(); g.arc(x,y,5,0,7); g.fill(); g.fillStyle=INK; g.font=bold(15); g.textAlign='center'; g.textBaseline='alphabetic'; g.fillText(fmt(v),x,y-10); });
+      g.restore(); });
     g.fillStyle=NAVY; g.font=med(16); g.textAlign='center'; g.textBaseline='top'; cats.forEach((c,ci)=>g.fillText(c,PLOT_X0+step*ci,base+10));
     if(hasLeg) legend(g,series,'line');
   }
@@ -92,11 +110,15 @@
     const top=CARD_TOP+34, rowH=Math.min(56,(CARD_BOT-top)/Math.max(1,ranks.length)-10), gap=10;
     const x0=CARD_L+230, barMax=CARD_R-x0-90; let y=top;
     ranks.forEach((r,i)=>{
+      const k=stagger(spec,i,ranks.length);      // 위에서부터 순차로 늘어남
+      g.globalAlpha=k>0?1:0.15;
       g.fillStyle=i===0?RED:NAVY; g.beginPath(); g.arc(CARD_L+40,y+rowH/2,15,0,7); g.fill();
       g.fillStyle='#fff'; g.font=bold(17); g.textAlign='center'; g.textBaseline='middle'; g.fillText(String(i+1),CARD_L+40,y+rowH/2);
       g.fillStyle=NAVY; g.font=bold(19); g.textAlign='left'; g.fillText(r.label||'',CARD_L+62,y+rowH/2);
-      const bw=Math.max(barMax*(r.value||0)/vmax,4); g.fillStyle=i===0?RED:'#2F6FD6'; rr(g,x0,y+6,bw,rowH-12,5); g.fill();
-      g.fillStyle='#fff'; g.font=bold(17); g.textAlign='right'; g.fillText(fmt(r.value)+(spec.suffix||''),x0+bw-10,y+rowH/2);
+      g.globalAlpha=1;
+      const bw=Math.max(barMax*(r.value||0)/vmax*easeOut(k),k>0?4:0);
+      if(k>0){ g.fillStyle=i===0?RED:'#2F6FD6'; rr(g,x0,y+6,bw,rowH-12,5); g.fill();
+        if(k>0.8){ g.globalAlpha=Math.min(1,(k-0.8)/0.2); g.fillStyle='#fff'; g.font=bold(17); g.textAlign='right'; g.fillText(fmt(r.value)+(spec.suffix||''),x0+bw-10,y+rowH/2); g.globalAlpha=1; } }
       y+=rowH+gap;
     });
   }
@@ -191,6 +213,26 @@
     return c.toDataURL('image/png');
   };
   window.KIT_TYPES=Object.keys(R);
+
+  // 요소 모션 재생: 막대 자라기 / 선 그려지기 / 순위 순차 등장. 1회 재생 후 완성 상태로 고정.
+  window.playBuild = async function(imgEl, spec, opts){
+    opts=opts||{};
+    const finalSrc=await window.renderKitCG({...spec, build:undefined});
+    if(!/^(bars|line|rank_bars)$/.test(spec&&spec.type||'')){ imgEl.src=finalSrc; return ()=>{}; }
+    const dur=opts.dur||1600, steps=opts.steps||18, frames=[];
+    for(let k=0;k<=steps;k++) frames.push(await window.renderKitCG({...spec, build:k/steps}));
+    let i=0, stop=false;
+    const tick=()=>{ if(stop)return; if(i>=frames.length){ imgEl.src=finalSrc; return; } imgEl.src=frames[i++]; setTimeout(tick,dur/steps); };
+    tick();
+    return ()=>{ stop=true; };
+  };
+  // CG 종류에 맞는 모션을 알아서 골라 재생
+  window.playKitMotion = function(imgEl, spec, opts){
+    if(!spec) return Promise.resolve(()=>{});
+    if(spec.type==='topic_line') return window.playTopicLine(imgEl,spec,opts);
+    if(/^(bars|line|rank_bars)$/.test(spec.type)) return window.playBuild(imgEl,spec,opts);
+    return window.renderKitCG(spec).then(src=>{ imgEl.src=src; return ()=>{}; });
+  };
 
   // 도착 애니메이션(정본 PPT와 동일): 이전 역 → 현재 역까지 2초 가감속으로 1회 재생 후 정지.
   // 선은 열차 뒤로 채워지고, 끝나면 현재 역 상태로 고정. 정지 함수 반환.
