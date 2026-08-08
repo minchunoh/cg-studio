@@ -175,7 +175,12 @@
   #mk label{display:block;font-size:11px;color:#8b9bc0;font-weight:700;margin:9px 0 4px;}
   #mk .hint{font-weight:500;color:#6f7ea0;}
   #mk input,#mk select,#mk textarea{width:100%;background:#0e1524;border:1px solid #2c3a5c;border-radius:7px;color:#e7ecf5;font-size:12px;padding:7px 9px;font-family:inherit;}
-  #mk textarea{height:190px;resize:vertical;line-height:1.6;font-family:ui-monospace,Menlo,monospace;}
+  #mk textarea{height:300px;resize:vertical;line-height:1.65;font-family:ui-monospace,Menlo,monospace;}
+  #mk .mkrow{display:flex;align-items:center;gap:8px;margin-top:10px;}
+  #mk .mkrow .lab{font-size:11px;color:#8b9bc0;font-weight:700;white-space:nowrap;}
+  #mk .mkrow select{flex:1;}
+  #mk .auto{font-size:10px;font-weight:700;color:#7fe0a0;background:#12331f;padding:3px 8px;border-radius:5px;white-space:nowrap;}
+  #mk .mkhelp{font-size:11px;color:#6f7ea0;line-height:1.6;margin-top:10px;}
   #mk .two{display:flex;gap:8px;} #mk .two>div{flex:1;}
 </style></head>
 <body>
@@ -400,28 +405,19 @@
       <button class="btn" id="mkClose" style="margin-left:auto;">✕ 닫기</button></div>
     <div class="mkbody">
       <div class="mkform">
-        <label>종류</label>
-        <select id="mkType">
-          <option value="bars">막대그래프 (여러 항목 비교)</option>
-          <option value="line">꺾은선 (추이)</option>
-          <option value="rank_bars">순위 막대 (가로)</option>
-          <option value="theme_grid">관련주 박스 (분류별)</option>
-          <option value="topic_line">오늘의 토크 흐름 (지하철)</option>
-          <option value="indicator">韓증시 영향 글로벌 지표</option>
-          <option value="three_line">미증시 3줄 요약 (메모지)</option>
-          <option value="quote">인용·말자막</option>
-          <option value="chart_frame">요약 카드 (불릿)</option>
-        </select>
-        <label>제목</label><input id="mkTitle" placeholder="예) SK하이닉스 분기 실적">
-        <div class="two"><div><label>단위</label><input id="mkUnit" placeholder="조원"></div>
-          <div><label>출처</label><input id="mkSource" placeholder="에프앤가이드"></div></div>
-        <label>내용 <span id="mkHint" class="hint"></span></label>
-        <textarea id="mkData" spellcheck="false"></textarea>
-        <div style="display:flex;gap:6px;margin-top:8px;">
-          <button class="btn" id="mkSample">예시 채우기</button>
-          <span class="sp" style="flex:1"></span>
+        <label>내용을 그냥 붙여넣으세요 <span class="hint">— 양식은 자동으로 판단합니다</span></label>
+        <textarea id="mkData" spellcheck="false" placeholder="예) 그냥 이렇게 붙여넣으면 됩니다&#10;&#10;제목: SK하이닉스 분기 실적&#10;단위: 조원&#10;매출, 영업이익&#10;1분기, 12.4, 2.9&#10;2분기, 16.4, 5.5&#10;&#10;※ 맨 위에 '제목:' '단위:' '출처:'를 적으면 반영됩니다(생략 가능)"></textarea>
+        <div class="mkrow">
+          <span class="lab">판단된 양식</span>
+          <select id="mkType"></select>
+          <span class="auto" id="mkAuto">자동</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+          <button class="btn" id="mkSample">예시 보기</button>
+          <span style="flex:1"></span>
           <button class="btn p" id="mkAdd">슬라이드로 추가</button>
         </div>
+        <div class="mkhelp" id="mkHint"></div>
       </div>
       <div class="mkprev"><div class="lab" style="margin-bottom:6px;">미리보기 (자동 갱신)</div><img id="mkImg"></div>
     </div>

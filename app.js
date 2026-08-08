@@ -632,141 +632,112 @@ document.addEventListener('paste',e=>{
   const rd=new FileReader(); rd.onload=()=>openPaste(rd.result); rd.readAsDataURL(f);
 });
 
-/* ── 킷 CG 만들기 (Claude 없이 사이트에서 직접 제작) ── */
-const MK_HINT={
-  bars:'첫 줄=계열 이름(쉼표), 다음 줄부터 "항목, 값, 값"',
-  line:'첫 줄=계열 이름(쉼표), 다음 줄부터 "항목, 값"',
-  rank_bars:'한 줄에 "이름, 값"',
-  theme_grid:'한 줄에 "분류: 종목1, 종목2"',
-  topic_line:'첫 줄=주제들(쉼표), 둘째 줄=현재 순서(1부터)',
-  quote:'첫 줄=인용문, 둘째 줄=말한 사람',
-  indicator:'한 줄에 "항목: 값" (항목=ETF/야간선물/WTI/브렌트유/반도체/환율/금리). 하락(-)은 자동 남색, 상승은 빨강',
-  three_line:'한 줄에 하나씩, 최대 3줄',
-  chart_frame:'한 줄에 하나씩 핵심 문장'
+/* ── 킷 CG 만들기 : 텍스트만 붙여넣으면 양식 자동 판단 ── */
+const TYPE_LABEL={
+  bars:'막대그래프', line:'꺾은선 추이', trend_bar:'시계열 막대(상승빨강/하락파랑)', rank_bars:'순위 가로막대',
+  diverge_bar:'상승·하락 발산막대', stacked_bar:'누적 막대', combo:'막대+꺾은선 이중축', donut:'도넛', pie:'파이',
+  theme_grid:'관련주 박스 그리드', category_list:'분류표(번호+분류|종목)', table_card:'구분|내용 표',
+  box_list:'헤드라인 브랜드 박스', chevron:'기존→변경 셰브론', timeline:'일지형 타임라인',
+  step_flow:'단계 흐름(화살표)', week_card:'주간 일정', vs_card:'대치 비교(VS)',
+  topic_line:'오늘의 토크 흐름(지하철)', topic_card:'주제 통CG(다크)', indicator:'韓증시 영향 글로벌 지표',
+  three_line:'미증시 3줄 요약(메모지)', person_quote:'인물 말자막', quote:'인용구',
+  image_card:'이미지 카드', chart_frame:'요약 카드(불릿)'
 };
-// 지표 항목 키워드 → 슬롯
-const IND_KEYS=[['ewy',/etf|ewy|msci/i],['night',/야간|선물/],['wti',/wti/i],['brent',/브렌트/],
-  ['sox',/반도체|필라|sox/i],['fx',/환율|달러/],['ust',/금리|국채|10년/]];
-const MK_SAMPLE={
-  bars:'매출, 영업이익\n1분기, 12.4, 2.9\n2분기, 16.4, 5.5\n3분기, 17.6, 7.0\n4분기, 19.8, 8.1',
-  line:'종가\n3월, 87\n4월, 94\n5월, 110\n6월, 120\n7월, 118\n8월, 132',
-  rank_bars:'삼성전자, 420\nSK하이닉스, 160\nLG에너지솔루션, 90\n삼성바이오로직스, 70\n현대차, 52',
-  theme_grid:'휴머노이드: 레인보우로보틱스, 에스비비테크\n협동로봇: 두산로보틱스, 뉴로메카\n부품·감속기: 에스피지, 해성티피씨\n물류로봇: 티로보틱스',
-  topic_line:'반도체, 전력기기, 바이오, K뷰티\n2',
-  quote:'AI 반도체 수요는 내년까지 공급이 못 따라갈 것\n젠슨 황 · 엔비디아 CEO',
-  indicator:'MSCI 한국 ETF: +2.00%\n야간선물: +0.36%\nWTI: $80.34(-5.11%)\n브렌트유: $83.77(-4.73%)\n필라델피아 반도체: +1.06%\n환율: 1,429.34 (-0.46원)\n美10년물 금리: 4.68%',
-  three_line:'뉴욕증시, 3대 지수 일제히 상승 마감\n엔비디아 실적 기대에 반도체주 강세\n국제유가는 공급 우려 완화에 하락',
-  chart_frame:'코스피 2,680 마감 (+1.2%)\n외국인 5거래일 연속 순매수\n반도체·2차전지 강세, 바이오 약세'
-};
-function mkParse(){
-  const type=$('mkType').value, title=$('mkTitle').value.trim(), unit=$('mkUnit').value.trim(), source=$('mkSource').value.trim();
-  const lines=$('mkData').value.split('\n').map(s=>s.trim()).filter(Boolean);
-  const base={type,title:title||'제목을 입력하세요'}; if(unit)base.unit=unit; if(source)base.source=source;
-  const cells=s=>s.split(',').map(x=>x.trim()).filter(x=>x!=='');
-  try{
-    if(type==='bars'||type==='line'){
-      if(!lines.length) return base;
-      const names=cells(lines[0]);
-      const cats=[], data=names.map(()=>[]);
-      lines.slice(1).forEach(l=>{ const c=cells(l); if(!c.length)return;
-        cats.push(c[0]); names.forEach((_,i)=>data[i].push(parseFloat(c[i+1])||0)); });
-      return {...base, categories:cats, series:names.map(n=>({name:n})), data};
-    }
-    if(type==='rank_bars') return {...base, ranks:lines.map(l=>{const c=cells(l);return {label:c[0],value:parseFloat(c[1])||0};})};
-    if(type==='theme_grid') return {...base, groups:lines.map(l=>{ const i=l.indexOf(':');
-      return i<0?{cat:l,items:[]}:{cat:l.slice(0,i).trim(),items:cells(l.slice(i+1))}; })};
-    if(type==='topic_line'){ const st=cells(lines[0]||''); const act=Math.max(1,parseInt(lines[1]||'1',10)||1);
-      return {...base, title:title||'오늘의 토크 흐름', stations:st, active:Math.min(st.length,act)-1}; }
-    if(type==='quote') return {...base, quote:lines[0]||'', who:lines[1]||''};
-    if(type==='indicator'){
-      const values={}, subs={};
-      lines.forEach(l=>{ const i=l.indexOf(':'); if(i<0)return;
-        const name=l.slice(0,i).trim(), v=l.slice(i+1).trim();
-        const hit=IND_KEYS.find(([,re])=>re.test(name)); if(!hit)return;
-        // "1,429.34 (-0.46원)" 처럼 괄호가 뒤에 따로 오면 작은 글씨로 분리
-        const m=/^(.*?)\s+(\([^)]*\))\s*$/.exec(v);
-        if(m){ values[hit[0]]=m[1].trim(); subs[hit[0]]=m[2]; } else values[hit[0]]=v;
-      });
-      // 템플릿에 제목이 이미 인쇄돼 있으므로 사용자가 직접 적었을 때만 제목을 덧그린다
-      return {...base, title:(title?title:''), values, subs};
-    }
-    // 메모지 템플릿에 "미증시 3줄 요약" 제목이 인쇄돼 있음 → 직접 적었을 때만 덧그림
-    if(type==='three_line') return {...base, title:(title?title:''), lines:lines.slice(0,3)};
-    return {...base, bullets:lines};
-  }catch(e){ return base; }
+const MK_SAMPLES=[
+  ['막대그래프','제목: SK하이닉스 분기 실적\n단위: 조원\n매출, 영업이익\n1분기, 12.4, 2.9\n2분기, 16.4, 5.5\n3분기, 17.6, 7.0\n4분기, 19.8, 8.1'],
+  ['지표','MSCI 한국 ETF: +2.00%\n야간선물: +0.36%\nWTI: $80.34(-5.11%)\n브렌트유: $83.77(-4.73%)\n필라델피아 반도체: +1.06%\n환율: 1,429.34 (-0.46원)\n美10년물 금리: 4.68%'],
+  ['3줄 요약','뉴욕증시, 3대 지수 일제히 상승 마감\n엔비디아 실적 기대에 반도체주 강세\n국제유가는 공급 우려 완화에 하락'],
+  ['관련주','휴머노이드: 레인보우로보틱스, 에스비비테크\n협동로봇: 두산로보틱스, 뉴로메카\n부품·감속기: 에스피지, 해성티피씨\n물류로봇: 티로보틱스'],
+  ['순위','제목: 시가총액 상위\n단위: 조원\n삼성전자, 420\nSK하이닉스, 160\nLG에너지솔루션, 90\n삼성바이오로직스, 70\n현대차, 52'],
+  ['토크 흐름','반도체, 전력기기, 바이오, K뷰티'],
+  ['일정','제목: 이번 주 주요 일정\n8/11(월) 한국 7월 수출입 물가\n8/12(화) 미국 7월 CPI 발표\n8/13(수) 엔비디아 실적 프리뷰\n8/14(목) 옵션만기일'],
+  ['말자막','"AI 반도체 수요는 내년까지 공급이 못 따라갈 것"\n젠슨 황 · 엔비디아 CEO'],
+  ['변경','기존 3.50% → 변경 3.25%\n기존 목표주가 12만원 → 변경 15만원'],
+];
+let mkSampleIdx=0, mkEditId=null, mkT=null, mkAutoType=true, mkImg=null;
+function mkBuildTypeSelect(){
+  const sel=$('mkType'); if(sel.options.length)return;
+  Object.keys(TYPE_LABEL).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=TYPE_LABEL[k]; sel.appendChild(o); });
 }
-// spec → 입력폼 (수정용). 사이트에서 만든 CG는 데이터가 살아 있어 언제든 다시 고칠 수 있다.
+function mkSpec(){
+  const raw=$('mkData').value;
+  const forced=mkAutoType?undefined:$('mkType').value;
+  const spec=window.kitAuto(raw,forced);
+  if(spec.type==='image_card'&&mkImg) spec._img=mkImg;
+  return spec;
+}
+async function mkPreview(){
+  try{
+    const spec=mkSpec();
+    if(mkAutoType){ $('mkType').value=spec.type; }
+    $('mkAuto').textContent=mkAutoType?'자동 판단':'직접 선택';
+    $('mkAuto').style.background=mkAutoType?'#12331f':'#3a3212';
+    $('mkAuto').style.color=mkAutoType?'#7fe0a0':'#ffd98a';
+    $('mkHint').textContent='※ 양식이 마음에 안 들면 위 목록에서 직접 고르세요. 맨 위에 "제목:", "단위:", "출처:"를 적으면 반영됩니다.';
+    $('mkImg').src=await renderKitCG(spec);
+  }catch(e){ console.warn('preview',e); }
+}
+function mkSchedule(){ clearTimeout(mkT); mkT=setTimeout(mkPreview,260); }
 function mkFill(spec){
   if(!spec)return;
-  $('mkType').value=spec.type||'bars';
-  $('mkTitle').value=spec.title||''; $('mkUnit').value=spec.unit||''; $('mkSource').value=spec.source||'';
-  let txt='';
-  const t=spec.type;
-  if(t==='bars'||t==='line'){
-    const names=(spec.series||[]).map(s=>s.name||'');
-    txt=names.join(', ')+'\n'+(spec.categories||[]).map((c,ci)=>
-      [c,...(spec.data||[]).map(d=>d[ci])].join(', ')).join('\n');
-  } else if(t==='rank_bars') txt=(spec.ranks||[]).map(r=>`${r.label}, ${r.value}`).join('\n');
-  else if(t==='theme_grid') txt=(spec.groups||[]).map(g=>`${g.cat}: ${(g.items||[]).join(', ')}`).join('\n');
-  else if(t==='topic_line') txt=(spec.stations||[]).join(', ')+'\n'+((spec.active||0)+1);
-  else if(t==='quote') txt=(spec.quote||'')+'\n'+(spec.who||'');
+  mkAutoType=false; mkBuildTypeSelect(); $('mkType').value=spec.type||'bars';
+  const meta=[]; if(spec.title)meta.push('제목: '+spec.title); if(spec.unit)meta.push('단위: '+spec.unit); if(spec.source)meta.push('출처: '+spec.source);
+  let txt='', t=spec.type;
+  if(t==='bars'||t==='line'||t==='stacked_bar'){
+    const names=(spec.series||[]).map(s=>s.name||'').filter(Boolean);
+    txt=(names.length?names.join(', ')+'\n':'')+(spec.categories||[]).map((c,ci)=>[c,...(spec.data||[]).map(d=>d[ci])].join(', ')).join('\n');
+  } else if(t==='rank_bars'||t==='diverge_bar'||t==='donut'||t==='pie') txt=((spec.ranks||spec.items)||[]).map(r=>`${r.label}, ${r.value}`).join('\n');
+  else if(t==='trend_bar') txt=(spec.categories||[]).map((c,i)=>`${c}, ${(spec.values||[])[i]}`).join('\n');
+  else if(t==='theme_grid'||t==='category_list') txt=((spec.groups||spec.items)||[]).map(g=>`${g.cat}: ${(g.items||[]).join(', ')}`).join('\n');
+  else if(t==='topic_line') txt=(spec.stations||[]).join(', ');
+  else if(t==='person_quote'||t==='quote') txt=(spec.quote||'')+'\n'+(spec.who||'');
   else if(t==='indicator'){ const L={ewy:'MSCI 한국 ETF',night:'야간선물',wti:'WTI',brent:'브렌트유',sox:'필라델피아 반도체',fx:'환율',ust:'美10년물 금리'};
-    txt=Object.keys(L).filter(k=>(spec.values||{})[k]!=null&&spec.values[k]!=='')
-      .map(k=>`${L[k]}: ${spec.values[k]}${(spec.subs&&spec.subs[k])?' '+spec.subs[k]:''}`).join('\n'); }
+    txt=Object.keys(L).filter(k=>(spec.values||{})[k]).map(k=>`${L[k]}: ${spec.values[k]}${(spec.subs&&spec.subs[k])?' '+spec.subs[k]:''}`).join('\n'); }
   else if(t==='three_line') txt=(spec.lines||[]).join('\n');
+  else if(t==='timeline') txt=(spec.items||[]).map(i=>`${i.date} ${i.text}`).join('\n');
+  else if(t==='chevron') txt=(spec.rows||[]).map(r=>`${r.from} → ${r.to}`).join('\n');
+  else if(t==='table_card'||t==='box_list'||t==='step_flow') txt=((spec.rows||spec.items||spec.steps)||[]).map(r=>`${r.label||r.title}: ${r.text||r.desc}`).join('\n');
+  else if(t==='topic_card') txt=(spec.lines||[]).join('\n');
   else txt=(spec.bullets||[]).join('\n');
-  $('mkData').value=txt;
-  $('mkHint').textContent='— '+(MK_HINT[$('mkType').value]||'');
+  $('mkData').value=(meta.length?meta.join('\n')+'\n':'')+txt;
 }
-let mkEditId=null;                       // 수정 중인 슬라이드 id (null이면 새로 추가)
-let mkT=null;
-async function mkPreview(){
-  try{ $('mkImg').src=await renderKitCG(mkParse()); }catch(e){ console.warn('preview',e); }
-}
-function mkSchedule(){ clearTimeout(mkT); mkT=setTimeout(mkPreview,220); }
 function mkOpen(editSpec,editId){
-  mkEditId=editId||null;
+  mkBuildTypeSelect();
+  mkEditId=editId||null; mkImg=null;
   $('mk').style.display='flex';
   $('mkAdd').textContent=mkEditId?'수정 반영':'슬라이드로 추가';
   if(editSpec) mkFill(editSpec);
-  else if(!$('mkData').value) $('mkData').value=MK_SAMPLE[$('mkType').value]||'';
-  $('mkHint').textContent='— '+(MK_HINT[$('mkType').value]||''); mkPreview();
+  else { mkAutoType=true; if(!$('mkData').value) $('mkData').value=MK_SAMPLES[0][1]; }
+  mkPreview();
 }
 $('makeCG').onclick=()=>mkOpen();
-// 예전 버전으로 저장된 CG를 현재 규격(진짜 방송 배경 · 1920×1080)으로 다시 그린다
-$('redrawCG').onclick=async()=>{
-  const targets=PROJECT.filter(s=>s.spec);
-  if(!targets.length){ toast('다시 그릴 CG가 없습니다 (가져온 그림은 대상이 아닙니다)'); return; }
-  busy(true,`CG ${targets.length}장 다시 그리는 중…`);
-  try{
-    for(let i=0;i<targets.length;i++){ busy(true,`다시 그리는 중 ${i+1}/${targets.length}`);
-      targets[i].img=await putImage(await renderKitCG(targets[i].spec)); }
-    renderAll(); pushState(); toast(`${targets.length}장 다시 그렸습니다 (1920×1080)`);
-  }catch(e){ toast('오류: '+e.message); }
-  busy(false);
-};
 $('editCG').onclick=()=>{ const s=curSlide();
   if(!s||!s.spec){ toast('이 슬라이드는 가져온 그림이라 수정할 수 없습니다 — 사이트에서 만든 CG만 수정됩니다'); return; }
   mkOpen(s.spec,s.id); };
 $('mkClose').onclick=()=>$('mk').style.display='none';
 $('mk').onclick=e=>{ if(e.target.id==='mk')e.target.style.display='none'; };
-$('mkType').onchange=()=>{ $('mkHint').textContent='— '+(MK_HINT[$('mkType').value]||'');
-  $('mkData').value=MK_SAMPLE[$('mkType').value]||''; mkPreview(); };
-$('mkSample').onclick=()=>{ $('mkData').value=MK_SAMPLE[$('mkType').value]||''; mkPreview(); };
-['mkTitle','mkUnit','mkSource','mkData'].forEach(id=>$(id).addEventListener('input',mkSchedule));
+$('mkType').onchange=()=>{ mkAutoType=false; mkPreview(); };
+$('mkSample').onclick=()=>{ const s=MK_SAMPLES[mkSampleIdx%MK_SAMPLES.length]; mkSampleIdx++;
+  $('mkData').value=s[1]; mkAutoType=true; mkPreview(); toast('예시: '+s[0]); };
+$('mkData').addEventListener('input',()=>{ mkAutoType=true; mkSchedule(); });
+// 만들기 창에서 이미지 붙여넣기 → 이미지 카드
+$('mkData').addEventListener('paste',e=>{
+  const items=[...(e.clipboardData&&e.clipboardData.items||[])];
+  const it=items.find(x=>x.type&&x.type.startsWith('image/')); if(!it)return;
+  e.preventDefault(); const f=it.getAsFile(); if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{ const im=new Image(); im.onload=()=>{ mkImg=im; mkAutoType=false;
+    mkBuildTypeSelect(); $('mkType').value='image_card'; mkPreview(); toast('이미지 카드로 넣습니다'); }; im.src=rd.result; };
+  rd.readAsDataURL(f);
+});
 $('mkAdd').onclick=async()=>{
-  const spec=mkParse();
+  const spec=mkSpec();
   busy(true,'CG 만드는 중…');
   try{
-    const img=await putImage(await renderKitCG(spec));      // 1920×1080 방송 해상도
-    if(mkEditId){
-      const s=PROJECT.find(x=>x.id===mkEditId);
-      if(s){ s.img=img; s.spec=spec; s.name=spec.title||s.name; }   // 데이터는 그대로 살아 있음
-      selId=mkEditId; toast('CG 수정 반영');
-    } else {
-      selId=addSlide(img, spec.title||'킷 CG', spec);
-      toast('CG 추가 — 언제든 "이 CG 수정"으로 고칠 수 있습니다');
-    }
+    const img=await putImage(await renderKitCG(spec));
+    const save={...spec}; delete save._img;
+    if(mkEditId){ const s=PROJECT.find(x=>x.id===mkEditId);
+      if(s){ s.img=img; s.spec=save; s.name=spec.title||s.name; } selId=mkEditId; toast('CG 수정 반영'); }
+    else { selId=addSlide(img, spec.title||TYPE_LABEL[spec.type]||'킷 CG', save); toast('CG 추가 ('+(TYPE_LABEL[spec.type]||spec.type)+')'); }
     mkEditId=null; renderAll(); pushState(); $('mk').style.display='none';
   }catch(e){ toast('CG 오류: '+e.message); }
   busy(false);
