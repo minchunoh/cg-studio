@@ -1,7 +1,6 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CG 스튜디오 · 한경글로벌TV</title>
-<!-- Gmarket Sans 웹폰트 (배포 환경에 폰트 미설치여도 방송 서체로 렌더) -->
 <style>
 @font-face{font-family:'Gmarket Sans';font-weight:700;src:url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');font-display:swap;}
 @font-face{font-family:'Gmarket Sans';font-weight:500;src:url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');font-display:swap;}
@@ -9,170 +8,313 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<!-- 배포 설정(각자 계정 키). 없으면 로컬(탭 간) 모드로 동작 -->
+<!-- pdf.js는 사내망에서 CDN이 막혀도 되도록 사이트에 함께 담아 쓴다 (vendor/) -->
+<script src="./vendor/pdf.min.js"></script>
 <script src="./config.js" onerror="window.CG_CONFIG=window.CG_CONFIG||{}"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,"Malgun Gothic",sans-serif;}
-  body{background:#0b0f1a;color:#dfe8fb;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
-  .top{height:52px;flex:0 0 52px;background:#111a2c;border-bottom:1px solid #223;display:flex;align-items:center;gap:12px;padding:0 14px;}
-  .logo{font-weight:800;color:#5aa0ff;font-size:15px;white-space:nowrap;}
-  .logo .env{font-weight:600;font-size:11px;padding:2px 7px;border-radius:6px;margin-left:6px;}
+  body{background:#0b0f1a;color:#dfe8fb;height:100vh;overflow:hidden;display:flex;flex-direction:column;user-select:none;}
+  button{font-family:inherit;}
+  /* ── 상단 바 ── */
+  .top{height:46px;flex:0 0 46px;background:#0c1220;border-bottom:1px solid #1c2740;display:flex;align-items:center;gap:10px;padding:0 12px;}
+  .logo{font-weight:800;color:#5aa0ff;font-size:14px;white-space:nowrap;}
+  .env{font-weight:700;font-size:10px;padding:2px 7px;border-radius:5px;margin-left:4px;}
   .env.cloud{background:#123047;color:#7fc7ec;} .env.local{background:#3a3212;color:#ffd98a;}
   .sp{flex:1;}
-  .who{display:flex;align-items:center;gap:6px;}
-  .who .cnt{font-size:12px;color:#9fb6e6;margin-right:4px;}
-  .av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#08131f;border:2px solid #111a2c;margin-left:-8px;}
-  .btn{border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;padding:8px 13px;}
+  .nameIn{background:#0e1524;border:1px solid #2c3a5c;border-radius:6px;color:#e7ecf5;font-size:12px;padding:5px 8px;width:104px;}
+  .who{display:flex;align-items:center;gap:5px;}
+  .who .cnt{font-size:11px;color:#9fb6e6;margin-right:3px;}
+  .av{width:25px;height:25px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#08131f;border:2px solid #0c1220;margin-left:-7px;}
+  .btn{border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;padding:7px 11px;color:#c7d5ef;background:#232e46;white-space:nowrap;}
+  .btn:hover{background:#2c3a58;}
   .btn.p{background:linear-gradient(180deg,#3d7bf0,#2f66d0);color:#fff;}
-  .btn.g{background:#232e46;color:#c7d5ef;}
   .btn.live{background:#c0392b;color:#fff;}
-  .nameIn{background:#0e1524;border:1px solid #2c3a5c;border-radius:7px;color:#e7ecf5;font-size:12px;padding:6px 8px;width:110px;}
+  .btn.sm{padding:4px 8px;font-size:11px;}
+  .btn.on{background:#2f66d0;color:#fff;}
+  /* ── 리본 ── */
+  .ribbon{flex:0 0 auto;background:#101827;border-bottom:1px solid #1c2740;}
+  .rtabs{display:flex;align-items:center;gap:2px;padding:0 8px;height:32px;border-bottom:1px solid #17203a;}
+  .rtab{background:none;border:none;color:#8b9bc0;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;border-radius:6px 6px 0 0;}
+  .rtab.on{background:#182339;color:#cfe0ff;}
+  .rtoggle{margin-left:auto;background:none;border:none;color:#6f7ea0;font-size:11px;cursor:pointer;padding:4px 8px;}
+  .rbody{display:flex;align-items:center;gap:6px;padding:9px 12px;min-height:52px;flex-wrap:wrap;}
+  .rbody.hide{display:none;}
+  .rpage{display:none;align-items:center;gap:6px;flex-wrap:wrap;}
+  .rpage.on{display:flex;}
+  .grp{display:flex;align-items:center;gap:5px;padding-right:10px;margin-right:4px;border-right:1px solid #22304d;}
+  .grp:last-child{border-right:none;}
+  .lab{font-size:10px;color:#6f7ea0;font-weight:700;margin-right:2px;}
+  select,input[type=number]{background:#0e1524;border:1px solid #2c3a5c;border-radius:6px;color:#cfe0ff;font-size:12px;padding:5px 7px;}
+  input[type=number]{width:56px;}
+  .sw{width:19px;height:19px;border-radius:4px;border:1px solid #46567c;cursor:pointer;}
+  .sw:hover{outline:2px solid #5aa0ff;}
+  /* ── 본문 ── */
   .wrap{flex:1;display:flex;min-height:0;}
-  .split{flex:0 0 6px;cursor:col-resize;background:#141d30;position:relative;}
+  .split{flex:0 0 5px;cursor:col-resize;background:#131b2c;}
   .split:hover,.split.drag{background:#2f66d0;}
-  .split::after{content:'';position:absolute;left:2px;top:50%;transform:translateY(-50%);width:2px;height:26px;border-radius:2px;background:#3a4a6a;}
-  .sorter{width:172px;flex:0 0 172px;background:#0e1524;border-right:1px solid #1c2740;overflow-y:auto;padding:10px 9px;}
-  .sorter .lab{font-size:11px;color:#7f8db0;font-weight:700;margin:2px 3px 8px;}
-  .thumb{position:relative;border:2px solid transparent;border-radius:7px;overflow:hidden;margin-bottom:9px;cursor:pointer;background:#000;}
+  .sorter{width:158px;flex:0 0 158px;background:#0c1220;border-right:1px solid #17203a;overflow-y:auto;padding:8px;}
+  .sorter .hd{font-size:10px;color:#6f7ea0;font-weight:700;margin:0 2px 7px;}
+  .thumb{position:relative;border:2px solid transparent;border-radius:6px;overflow:hidden;margin-bottom:7px;cursor:pointer;background:#000;}
   .thumb img{width:100%;display:block;}
   .thumb.on{border-color:#5aa0ff;}
-  .thumb .no{position:absolute;top:3px;left:5px;font-size:10px;color:#fff;background:rgba(0,0,0,.6);border-radius:3px;padding:0 4px;}
-  .thumb .x{position:absolute;top:3px;right:4px;width:18px;height:18px;border:none;border-radius:4px;background:rgba(58,34,51,.85);color:#ff8fb0;font-weight:800;cursor:pointer;display:none;}
+  .thumb .no{position:absolute;top:2px;left:4px;font-size:10px;color:#fff;background:rgba(0,0,0,.65);border-radius:3px;padding:0 4px;}
+  .thumb .x{position:absolute;top:2px;right:3px;width:17px;height:17px;border:none;border-radius:4px;background:rgba(58,34,51,.9);color:#ff8fb0;font-weight:800;cursor:pointer;display:none;font-size:11px;}
   .thumb:hover .x{display:block;}
-  .addbtn{border:1px dashed #35446a;color:#9fb6e6;background:transparent;border-radius:7px;width:100%;padding:9px;font-size:12px;cursor:pointer;}
-  .center{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;}
-  .stageWrap{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;position:relative;overflow:hidden;}
-  #stage{position:relative;width:100%;max-width:900px;aspect-ratio:16/9;border-radius:8px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.55);background:#0a0f1a;}
-  #stage img{width:100%;height:100%;object-fit:cover;display:block;}
-  #cursors{position:absolute;inset:0;pointer-events:none;z-index:30;}
-  .cur{position:absolute;transform:translate(-2px,-2px);transition:left .08s linear,top .08s linear;}
-  .cur svg{display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));}
-  .cur .tag{position:absolute;left:14px;top:12px;font-size:10px;font-weight:800;color:#08131f;padding:1px 5px;border-radius:4px;white-space:nowrap;}
-  .transport{height:56px;flex:0 0 56px;border-top:1px solid #1c2740;background:#0e1524;display:flex;align-items:center;gap:12px;padding:0 16px;}
-  .transport .lab{font-size:11px;color:#7f8db0;font-weight:700;}
-  select.tr{background:#0e1524;border:1px solid #2c3a5c;border-radius:7px;color:#cfe0ff;font-size:12px;padding:6px 8px;}
-  .side{width:260px;flex:0 0 260px;background:#0e1524;border-left:1px solid #1c2740;overflow-y:auto;padding:13px;display:flex;flex-direction:column;}
-  .ovb{width:22px;height:22px;border:1px solid #2c3a5c;background:#0e1524;color:#cfe0ff;border-radius:5px;cursor:pointer;font-size:13px;}
-  .ovsw{width:18px;height:18px;border-radius:4px;border:1px solid #46567c;cursor:pointer;}
-  #reqList{max-height:240px;overflow-y:auto;margin-bottom:8px;}
-  .reqItem{background:#131b2b;border:1px solid #22314f;border-radius:8px;padding:8px;margin-bottom:7px;font-size:12px;}
-  .reqItem .rhead{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
-  .reqItem .rhead .dot{width:8px;height:8px;border-radius:50%;}
-  .reqItem .rhead .nm{font-weight:700;color:#cfe0ff;}
-  .reqItem .rhead .st{margin-left:auto;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:700;}
-  .reqItem .st.wait{background:#3a3212;color:#ffd98a;}
-  .reqItem .st.done{background:#12331f;color:#7fe0a0;}
-  .reqItem .st.gen{background:#123047;color:#7fc7ec;}
-  .reqItem .st.err{background:#3a1220;color:#ff9aa8;}
-  .reqItem .rtxt{color:#c7d5ef;line-height:1.4;}
-  .reqItem .ratt{width:100%;border-radius:6px;margin-top:6px;display:block;}
-  .reqItem .rfile{margin-top:6px;font-size:11px;color:#9fb6e6;background:#0e1a30;border:1px solid #24406e;border-radius:6px;padding:5px 7px;}
-  .racts{display:flex;gap:5px;margin-top:6px;}
-  .racts .rgen{flex:1;border:none;background:linear-gradient(180deg,#2fbf9d,#1f9e82);color:#04231d;font-weight:800;border-radius:6px;padding:6px;font-size:11px;cursor:pointer;}
-  .racts .rfill{flex:0 0 auto;border:1px dashed #35446a;background:transparent;color:#9fb6e6;border-radius:6px;padding:6px 8px;font-size:11px;cursor:pointer;}
-  .reqInput textarea{width:100%;height:52px;background:#0e1526;border:1px solid #2c3a5c;border-radius:7px;color:#e7ecf5;font-size:12px;padding:7px;resize:vertical;}
-  #attPrev .attChip{display:inline-flex;align-items:center;gap:6px;margin-top:7px;background:#0e1a30;border:1px solid #24406e;border-radius:7px;padding:4px 6px;font-size:11px;color:#c7d5ef;}
-  #attPrev .attChip img{width:44px;height:26px;object-fit:cover;border-radius:4px;}
-  #attPrev .attChip button{border:none;background:#3a2233;color:#ff8fb0;border-radius:4px;width:18px;height:18px;cursor:pointer;font-weight:800;}
-  .ov{position:absolute;cursor:move;color:#111;font-weight:800;line-height:1.15;padding:2px 4px;outline:2px solid transparent;white-space:pre-wrap;min-width:24px;}
+  .addbtn{border:1px dashed #35446a;color:#9fb6e6;background:none;border-radius:6px;width:100%;padding:8px;font-size:11px;cursor:pointer;}
+  .center{flex:1;display:flex;flex-direction:column;min-width:0;}
+  .stageWrap{flex:1;display:flex;align-items:center;justify-content:center;padding:14px;position:relative;overflow:hidden;background:#070b13;}
+  #stage{position:relative;width:100%;max-width:1180px;aspect-ratio:16/9;border-radius:5px;overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.6);background:#0a0f1a;}
+  #stage>img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;}
+  #cursors{position:absolute;inset:0;pointer-events:none;z-index:40;}
+  .cur{position:absolute;transition:left .08s linear,top .08s linear;}
+  .cur .tag{position:absolute;left:13px;top:11px;font-size:10px;font-weight:800;color:#08131f;padding:1px 5px;border-radius:4px;white-space:nowrap;}
+  /* 티커 안전지대 */
+  #safe{position:absolute;inset:0;pointer-events:none;z-index:20;display:none;}
+  #safe .bar{position:absolute;left:0;right:0;background:rgba(192,57,43,.16);border-top:1px dashed rgba(255,120,120,.5);border-bottom:1px dashed rgba(255,120,120,.5);}
+  #safe .t{top:0;height:22.08%;} #safe .b{bottom:0;height:14.4%;}
+  #safe .tx{position:absolute;left:6px;font-size:9px;color:#ffb3b3;font-weight:700;}
+  /* 정렬 가이드 */
+  #guides{position:absolute;inset:0;pointer-events:none;z-index:35;}
+  #guides div{position:absolute;background:#16d6b4;}
+  /* 텍스트 오버레이 */
+  .ov{position:absolute;cursor:move;line-height:1.15;padding:1px 3px;outline:2px solid transparent;white-space:pre-wrap;min-width:20px;z-index:30;}
   .ov.sel{outline:2px dashed #16d6b4;}
-  .side h4{font-size:12px;color:#bcd0f5;margin-bottom:8px;}
-  .side .row{font-size:12px;color:#9fb6e6;display:flex;align-items:center;gap:7px;margin-bottom:7px;}
-  .dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;}
-  .note{font-size:11px;color:#6f7ea0;line-height:1.5;margin-top:10px;}
-  .roomrow{font-size:11px;color:#9fb6e6;margin-top:6px;display:flex;gap:6px;align-items:center;}
-  .roomrow code{background:#0e1a30;border:1px solid #24406e;border-radius:5px;padding:2px 6px;color:#cfe0ff;}
-  /* 송출: 발표자 보기 (현재 크게 + 이전/다음 미리보기) */
-  #present{position:fixed;inset:0;background:#05070c;z-index:100;display:none;flex-direction:column;}
+  .ov .rz{position:absolute;right:-7px;bottom:-7px;width:13px;height:13px;background:#16d6b4;border:2px solid #0a0f1a;border-radius:50%;cursor:nwse-resize;}
+  /* 상태바 */
+  .statusbar{height:26px;flex:0 0 26px;background:#0c1220;border-top:1px solid #17203a;display:flex;align-items:center;gap:14px;padding:0 12px;font-size:11px;color:#7f8db0;}
+  .statusbar b{color:#a9c0ea;font-weight:700;}
+  /* 팀 게시판 */
+  .side{width:252px;flex:0 0 252px;background:#0c1220;border-left:1px solid #17203a;overflow-y:auto;padding:11px;display:flex;flex-direction:column;}
+  .side h4{font-size:11px;color:#bcd0f5;margin-bottom:7px;display:flex;align-items:center;gap:5px;}
+  .side .row{font-size:11px;color:#9fb6e6;display:flex;align-items:center;gap:6px;margin-bottom:5px;}
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+  #boardList{flex:1;min-height:80px;overflow-y:auto;margin-bottom:7px;}
+  .bItem{background:#111a2b;border:1px solid #20304d;border-radius:7px;padding:7px;margin-bottom:6px;font-size:11px;}
+  .bItem.done{opacity:.55;}
+  .bItem .bh{display:flex;align-items:center;gap:5px;margin-bottom:3px;}
+  .bItem .nm{font-weight:700;color:#cfe0ff;}
+  .bItem .st{margin-left:auto;font-size:9px;padding:1px 5px;border-radius:4px;font-weight:700;}
+  .st.wait{background:#3a3212;color:#ffd98a;} .st.doing{background:#123047;color:#7fc7ec;} .st.done{background:#12331f;color:#7fe0a0;}
+  .bItem .btx{color:#c7d5ef;line-height:1.45;white-space:pre-wrap;}
+  .bItem img.att{width:100%;border-radius:5px;margin-top:5px;display:block;cursor:pointer;}
+  .bItem .file{margin-top:5px;font-size:10px;color:#9fb6e6;background:#0e1a30;border:1px solid #24406e;border-radius:5px;padding:4px 6px;}
+  .bacts{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;}
+  .bacts button{border:none;border-radius:5px;padding:4px 7px;font-size:10px;font-weight:700;cursor:pointer;background:#22304d;color:#bcd0f5;}
+  .bacts .go{background:linear-gradient(180deg,#2fbf9d,#1f9e82);color:#04231d;}
+  .bacts .rm{background:none;color:#ff8fb0;text-decoration:underline;padding:4px 2px;}
+  .bin textarea{width:100%;height:46px;background:#0e1526;border:1px solid #2c3a5c;border-radius:6px;color:#e7ecf5;font-size:11px;padding:6px;resize:vertical;font-family:inherit;}
+  #attPrev .chip{display:inline-flex;align-items:center;gap:5px;margin-top:5px;background:#0e1a30;border:1px solid #24406e;border-radius:6px;padding:3px 5px;font-size:10px;color:#c7d5ef;}
+  #attPrev .chip img{width:38px;height:23px;object-fit:cover;border-radius:3px;}
+  #attPrev .chip button{border:none;background:#3a2233;color:#ff8fb0;border-radius:4px;width:16px;height:16px;cursor:pointer;font-weight:800;}
+  /* 컨텍스트 메뉴 */
+  #ctx{position:fixed;z-index:300;background:#16203a;border:1px solid #2c3a5c;border-radius:8px;padding:4px;display:none;box-shadow:0 10px 30px rgba(0,0,0,.55);min-width:150px;}
+  #ctx button{display:block;width:100%;text-align:left;background:none;border:none;color:#cfe0ff;font-size:12px;padding:7px 10px;border-radius:5px;cursor:pointer;}
+  #ctx button:hover{background:#22304d;}
+  #ctx .sep{height:1px;background:#22304d;margin:3px 0;}
+  #ctx button.dg{color:#ff9aa8;}
+  /* 송출 */
+  #present{position:fixed;inset:0;background:#05070c;z-index:200;display:none;flex-direction:column;}
   #present .pmain{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;}
-  #present .pmain img{max-width:92%;max-height:92%;border-radius:6px;box-shadow:0 20px 60px rgba(0,0,0,.6);}
-  #present .pstrip{height:158px;flex:0 0 158px;display:flex;align-items:center;justify-content:center;gap:30px;background:#0a0d15;border-top:1px solid #1c2740;padding:0 24px;}
-  #present .pcell{display:flex;flex-direction:column;align-items:center;gap:6px;color:#7f8db0;font-size:12px;font-weight:700;}
-  #present .pcell img{height:104px;border-radius:6px;border:1px solid #223;background:#000;opacity:.75;}
-  #present .pcell.cur img{opacity:1;border-color:#5aa0ff;}
-  #present .pcenter{color:#cfe0ff;text-align:center;min-width:120px;}
-  #present .pcenter .n{font-size:30px;font-weight:800;}
-  #present .pcenter .clk{font-size:14px;color:#7f8db0;margin-top:4px;}
-  #present .pcenter .tr{font-size:11px;color:#5aa0ff;margin-top:6px;}
-  #present .exit{position:absolute;top:14px;right:18px;z-index:5;}
-  /* 송출 전환/모션 */
-  @keyframes tFade{from{opacity:0}to{opacity:1}}
-  @keyframes tZoom{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:scale(1)}}
-  @keyframes tWipeR{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
-  @keyframes tPushL{from{transform:translateX(70px);opacity:.15}to{transform:translateX(0);opacity:1}}
-  @keyframes tUp{from{transform:translateY(46px);opacity:0}to{transform:translateY(0);opacity:1}}
-  @keyframes tFlip{from{transform:perspective(1200px) rotateY(28deg);opacity:0}to{transform:perspective(1200px) rotateY(0);opacity:1}}
-  /* 단축키 도움말 */
-  #keys{position:fixed;inset:0;background:rgba(4,7,14,.72);z-index:150;display:none;align-items:center;justify-content:center;}
-  #keys .box{background:#111a2c;border:1px solid #2c3a5c;border-radius:14px;padding:22px 26px;max-width:520px;color:#dfe8fb;}
-  #keys h3{font-size:15px;margin-bottom:12px;color:#5aa0ff;}
-  #keys table{font-size:13px;border-collapse:collapse;width:100%;}
-  #keys td{padding:5px 10px;border-bottom:1px solid #1c2740;}
-  #keys kbd{background:#232e46;border-radius:5px;padding:2px 7px;font-family:monospace;font-size:12px;}
-  .reqItem .rrecall{margin-left:6px;border:none;background:transparent;color:#ff8fb0;font-size:10px;cursor:pointer;text-decoration:underline;}
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1b2740;color:#dfe8fb;padding:9px 16px;border-radius:9px;font-size:13px;opacity:0;transition:.3s;z-index:200;}
+  #present .pmain img{max-width:100%;max-height:100%;}
+  #present.full .pmain img{width:100%;height:100%;object-fit:contain;}
+  #present .pstrip{height:132px;flex:0 0 132px;display:flex;align-items:center;justify-content:center;gap:24px;background:#080b12;border-top:1px solid #1c2740;padding:0 20px;}
+  #present.clean .pstrip{display:none;}
+  .pcell{display:flex;flex-direction:column;align-items:center;gap:4px;color:#7f8db0;font-size:11px;font-weight:700;cursor:pointer;}
+  .pcell img{height:84px;border-radius:5px;border:1px solid #223;background:#000;opacity:.7;}
+  .pcell:hover img{opacity:1;}
+  .pcenter{color:#cfe0ff;text-align:center;min-width:150px;}
+  .pcenter .n{font-size:26px;font-weight:800;}
+  .pcenter .clk{font-size:13px;color:#7f8db0;margin-top:2px;}
+  .pcenter .tr{font-size:10px;color:#5aa0ff;margin-top:4px;}
+  #present .ptools{position:absolute;top:12px;right:14px;display:flex;gap:6px;z-index:5;}
+  #present.clean .ptools{opacity:.12;} #present.clean .ptools:hover{opacity:1;}
+  #wait{position:fixed;inset:0;background:#000;z-index:210;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;}
+  #wait img{width:220px;opacity:.9;}
+  #wait .t{color:#5f6b85;font-size:13px;}
+  #lockNote{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#3a1220;color:#ff9aa8;font-size:12px;font-weight:700;padding:6px 14px;border-radius:8px;z-index:215;display:none;}
+  /* 단축키 */
+  #keys{position:fixed;inset:0;background:rgba(4,7,14,.75);z-index:250;display:none;align-items:center;justify-content:center;}
+  #keys .box{background:#111a2c;border:1px solid #2c3a5c;border-radius:12px;padding:20px 24px;max-width:560px;}
+  #keys h3{font-size:14px;margin-bottom:10px;color:#5aa0ff;}
+  #keys table{font-size:12px;border-collapse:collapse;width:100%;}
+  #keys td{padding:4px 9px;border-bottom:1px solid #1c2740;color:#cfe0ff;}
+  #keys kbd{background:#232e46;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:11px;}
+  .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1b2740;color:#dfe8fb;padding:8px 15px;border-radius:8px;font-size:12px;opacity:0;transition:.3s;z-index:400;pointer-events:none;}
+  #busy{position:fixed;inset:0;background:rgba(4,7,14,.6);z-index:350;display:none;align-items:center;justify-content:center;color:#cfe0ff;font-size:14px;font-weight:700;}
 </style></head>
 <body>
   <div class="top">
-    <span class="logo">● CG 스튜디오 <span class="env local" id="envTag">로컬</span></span>
+    <span class="logo">● CG 스튜디오<span class="env local" id="envTag">로컬</span></span>
     <input class="nameIn" id="nameIn" placeholder="내 이름" maxlength="10">
     <span class="sp"></span>
     <div class="who" id="who"></div>
-    <button class="btn g" id="addBtn2">＋ 슬라이드</button>
-    <button class="btn g" id="shareBtn">🔗 초대링크</button>
-    <button class="btn g" id="keysBtn" title="단축키">⌨</button>
-    <button class="btn g" id="expImg">🖼 이미지</button>
-    <button class="btn g" id="expPpt">📄 PPT</button>
-    <button class="btn live" id="presentBtn">▶ 송출</button>
+    <button class="btn" id="shareBtn">🔗 초대</button>
+    <button class="btn" id="keysBtn" title="단축키">⌨</button>
+    <button class="btn live" id="presentBtn">▶ 송출 (F5)</button>
   </div>
+
+  <div class="ribbon">
+    <div class="rtabs">
+      <button class="rtab on" data-tab="home">홈</button>
+      <button class="rtab" data-tab="text">텍스트</button>
+      <button class="rtab" data-tab="motion">모션</button>
+      <button class="rtab" data-tab="out">송출</button>
+      <button class="rtab" data-tab="view">보기</button>
+      <button class="rtoggle" id="rToggle">리본 접기 ▲</button>
+    </div>
+    <div class="rbody" id="rbody">
+      <!-- 홈 -->
+      <div class="rpage on" data-page="home">
+        <div class="grp"><span class="lab">가져오기</span>
+          <button class="btn" id="impImg">🖼 이미지</button>
+          <button class="btn" id="impPdf">📄 PDF(PPT 저장본)</button>
+        </div>
+        <div class="grp"><span class="lab">슬라이드</span>
+          <button class="btn" id="dupSlideBtn">⧉ 복제</button>
+          <button class="btn" id="delSlideBtn" style="background:#3a2233;color:#ff9aa8;">🗑 삭제</button>
+          <button class="btn" id="upSlideBtn">↑ 앞으로</button>
+          <button class="btn" id="dnSlideBtn">↓ 뒤로</button>
+        </div>
+        <div class="grp"><span class="lab">삽입</span>
+          <button class="btn" id="addText">＋ 텍스트</button>
+        </div>
+        <div class="grp"><span class="lab">내보내기</span>
+          <button class="btn" id="expImg">🖼 이미지(zip)</button>
+          <button class="btn" id="expPpt">📄 PPT</button>
+        </div>
+      </div>
+      <!-- 텍스트 -->
+      <div class="rpage" data-page="text">
+        <div class="grp"><span class="lab">글꼴</span>
+          <select id="ovFont">
+            <option value="700">G마켓 Bold</option>
+            <option value="500">G마켓 Medium</option>
+            <option value="300">G마켓 Light</option>
+          </select>
+          <span class="lab">크기</span>
+          <button class="btn sm" data-a="fs-">−</button>
+          <input type="number" id="ovFs" min="8" max="140" value="34">
+          <button class="btn sm" data-a="fs+">＋</button>
+        </div>
+        <div class="grp"><span class="lab">색</span>
+          <span class="sw" data-c="#111111" style="background:#111"></span>
+          <span class="sw" data-c="#FFFFFF" style="background:#fff"></span>
+          <span class="sw" data-c="#0D004E" style="background:#0D004E"></span>
+          <span class="sw" data-c="#C00000" style="background:#C00000"></span>
+          <span class="sw" data-c="#2F6FD6" style="background:#2F6FD6"></span>
+          <span class="sw" data-c="#12B0C6" style="background:#12B0C6"></span>
+        </div>
+        <div class="grp"><span class="lab">정렬</span>
+          <button class="btn sm" data-al="left">좌</button>
+          <button class="btn sm" data-al="center">중</button>
+          <button class="btn sm" data-al="right">우</button>
+          <button class="btn sm" id="ovCenterX" title="화면 가운데로">↔ 화면중앙</button>
+        </div>
+        <div class="grp"><span class="lab">방송 효과</span>
+          <button class="btn sm" id="ovStroke">흰 외곽선</button>
+          <button class="btn sm" id="ovShadow">그림자</button>
+        </div>
+        <div class="grp">
+          <button class="btn sm" id="ovDup">⧉ 복제</button>
+          <button class="btn sm" id="ovDel" style="background:#3a2233;color:#ff9aa8;">삭제</button>
+        </div>
+      </div>
+      <!-- 모션 -->
+      <div class="rpage" data-page="motion">
+        <div class="grp"><span class="lab">화면 전환</span>
+          <select id="trSel"></select>
+          <button class="btn" id="applyAllTr">전체 적용</button>
+          <button class="btn" id="prevTr">▶ 미리보기</button>
+        </div>
+        <div class="grp"><span class="lab">지하철 CG</span>
+          <span style="font-size:11px;color:#6f7ea0;">노선도 슬라이드는 송출에서 열차 이동이 자동 재생됩니다</span>
+        </div>
+      </div>
+      <!-- 송출 -->
+      <div class="rpage" data-page="out">
+        <div class="grp"><span class="lab">시작</span>
+          <button class="btn live" id="startFromFirst">▶ 처음부터</button>
+          <button class="btn" id="startFromHere">▶ 현재부터 (Shift+F5)</button>
+        </div>
+        <div class="grp"><span class="lab">대기화면</span>
+          <button class="btn" id="waitBtn">⬛ 대기화면 (W)</button>
+        </div>
+        <div class="grp"><span class="lab">옵션</span>
+          <button class="btn" id="autoBtn">⏱ 자동진행</button>
+          <input type="number" id="autoSec" min="2" max="120" value="8" title="초">
+          <button class="btn" id="lockBtn">🔒 실수방지 잠금</button>
+          <button class="btn" id="cleanBtn">미리보기 숨김</button>
+        </div>
+      </div>
+      <!-- 보기 -->
+      <div class="rpage" data-page="view">
+        <div class="grp"><span class="lab">가이드</span>
+          <button class="btn" id="safeBtn">티커 안전지대</button>
+          <button class="btn on" id="snapBtn">정렬 스냅</button>
+        </div>
+        <div class="grp"><span class="lab">패널</span>
+          <button class="btn" id="toggleSide">게시판 접기/펴기</button>
+          <button class="btn" id="resetPanels">폭 초기화</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="wrap">
-    <div class="sorter" id="sorter"><div class="lab">슬라이드 (드래그로 순서)</div></div>
-    <div class="split" id="splitL" title="드래그해 폭 조절"></div>
+    <div class="sorter" id="sorter"><div class="hd">슬라이드 · 드래그로 순서</div></div>
+    <div class="split" id="splitL"></div>
     <div class="center">
-      <div class="stageWrap">
-        <div id="stage"><img id="stageImg" src=""></div>
+      <div class="stageWrap" id="stageWrap">
+        <div id="stage">
+          <img id="stageImg" src="">
+          <div id="safe"><div class="bar t"><span class="tx" style="bottom:2px;">티커/로고 영역 — 여기 넘지 않기</span></div><div class="bar b"><span class="tx" style="top:2px;">하단 자막 티커</span></div></div>
+          <div id="guides"></div>
+        </div>
         <div id="cursors"></div>
       </div>
-      <div class="transport">
-        <span class="lab">모션(전환)</span>
-        <select class="tr" id="trSel"></select>
-        <button class="btn g" id="applyAllTr" style="padding:5px 9px;font-size:11px;">전체 적용</button>
-        <button class="btn g" id="addText" style="margin-left:14px;">＋ 텍스트</button>
-        <button class="btn g" id="dupSlideBtn" title="복제 (Ctrl+D)">⧉ 복제</button>
-        <button class="btn g" id="delSlideBtn" title="이 슬라이드 삭제 (Del)" style="background:#3a2233;color:#ff9aa8;">🗑 슬라이드 삭제</button>
-        <span class="lab" id="ovHint" style="margin-left:14px;color:#6f7ea0;">글자를 얹어 폰트·크기·색·위치 직접 수정 (선택 후 아래 툴바)</span>
-        <div id="ovTools" style="display:none;align-items:center;gap:7px;margin-left:auto;">
-          <span class="lab">크기</span><button class="ovb" data-a="fs-">−</button><span id="ovFs" style="font-size:12px;min-width:26px;text-align:center;">28</span><button class="ovb" data-a="fs+">＋</button>
-          <span class="ovsw" data-c="#111111" style="background:#111"></span><span class="ovsw" data-c="#C00000" style="background:#C00000"></span><span class="ovsw" data-c="#0D004E" style="background:#0D004E"></span><span class="ovsw" data-c="#FFFFFF" style="background:#fff"></span>
-          <button class="btn g" data-a="del" style="padding:5px 9px;">삭제</button>
-        </div>
+      <div class="statusbar">
+        <span>슬라이드 <b id="stSlide">-</b></span>
+        <span>모션 <b id="stTr">-</b></span>
+        <span>방 <b id="stRoom">-</b></span>
+        <span id="stSel"></span>
+        <span class="sp"></span>
+        <span id="stHint">텍스트를 더블클릭하면 글자 수정 · 우클릭하면 메뉴</span>
       </div>
     </div>
-    <div class="split" id="splitR" title="드래그해 폭 조절"></div>
-    <div class="side">
+    <div class="split" id="splitR"></div>
+    <div class="side" id="side">
       <h4>👥 접속 중</h4>
       <div id="userList"></div>
-      <div class="roomrow">방 <code id="roomCode">-</code><button class="btn g" id="copyRoom" style="padding:3px 8px;font-size:11px;">복사</button></div>
-      <h4 style="margin-top:14px;">💬 CG 의뢰판 <span style="color:#7f8db0;font-weight:600;font-size:10px;">(단톡)</span></h4>
-      <div id="reqList"></div>
-      <div class="reqInput">
-        <textarea id="reqText" placeholder="CG 의뢰를 적으세요. 예) 'SK하이닉스 최근 4분기 매출·영업이익 그룹막대' — 또는 이미지·파일을 첨부해 '이걸로 만들어줘'"></textarea>
+      <h4 style="margin-top:12px;">📋 팀 CG 의뢰 게시판</h4>
+      <div id="boardList"></div>
+      <div class="bin">
+        <textarea id="boardText" placeholder="필요한 CG를 적어주세요.&#10;예) SK하이닉스 4분기 실적 그룹막대 / 단위 조원&#10;Enter=등록, Shift+Enter=줄바꿈"></textarea>
         <div id="attPrev"></div>
-        <div style="display:flex;gap:6px;margin-top:6px;">
-          <button class="btn g" id="attImg" style="flex:1;">🖼 이미지</button>
-          <button class="btn g" id="attFile" style="flex:1;">📎 파일</button>
+        <div style="display:flex;gap:5px;margin-top:5px;">
+          <button class="btn sm" id="attImg" style="flex:1;">🖼 이미지</button>
+          <button class="btn sm" id="attFile" style="flex:1;">📎 파일</button>
         </div>
-        <button class="btn p" id="reqSend" style="width:100%;margin-top:6px;">의뢰 보내기</button>
+        <button class="btn p" id="boardSend" style="width:100%;margin-top:5px;">의뢰 등록</button>
       </div>
-      <div class="note">의뢰를 올리고 <b>🤖 AI 생성</b>을 누르면 Claude가 <b>우리 킷 규격</b>(남색 헤더·흰 카드·티커 안전지대·G마켓 서체·가운데 정렬)으로 CG를 그려 덱에 꽂습니다. 이미지·파일을 첨부해도 원본을 얹지 않고 <b>내용만 킷으로 재작도</b >합니다.</div>
-      <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
-      <input type="file" id="fulfillIn" accept="image/*" style="display:none">
-      <input type="file" id="attImgIn" accept="image/*" style="display:none">
-      <input type="file" id="attFileIn" style="display:none">
+      <div style="font-size:10px;color:#6f7ea0;line-height:1.5;margin-top:8px;">
+        의뢰가 올라오면 담당자가 <b>담당</b>을 눌러 표시하고, Claude로 만든 CG(PPT를 PDF로 저장 또는 이미지)를 <b>슬라이드로 올리기</b>로 덱에 넣은 뒤 <b>완료</b> 처리합니다.
+      </div>
+      <input type="file" id="fileImg" accept="image/*" multiple style="display:none">
+      <input type="file" id="filePdf" accept="application/pdf" style="display:none">
+      <input type="file" id="fileFulfill" accept="image/*,application/pdf" multiple style="display:none">
+      <input type="file" id="fileAttImg" accept="image/*" style="display:none">
+      <input type="file" id="fileAtt" style="display:none">
     </div>
   </div>
+
+  <div id="ctx"></div>
+
   <div id="present">
-    <button class="btn g exit" id="presExit">✕ 나가기 (Esc)</button>
+    <div class="ptools">
+      <button class="btn" id="presWait">⬛ 대기화면 (W)</button>
+      <button class="btn" id="presClean">미리보기 숨김</button>
+      <button class="btn" id="presExit">✕ 종료 (Esc)</button>
+    </div>
     <div class="pmain"><img id="presImg"></div>
     <div class="pstrip">
       <div class="pcell" id="pPrevCell">◀ 이전<img id="pPrev"></div>
@@ -180,19 +322,25 @@
       <div class="pcell" id="pNextCell">다음 ▶<img id="pNext"></div>
     </div>
   </div>
+  <div id="wait"><img id="waitLogo" src="./moneyplus_logo.png?v=4"><div class="t">대기 중 — 아무 키나 누르면 돌아갑니다</div></div>
+  <div id="lockNote">🔒 잠금 — 해제: Shift 3번</div>
+
   <div id="keys"><div class="box">
-    <h3>⌨ 단축키 (파워포인트식)</h3>
+    <h3>⌨ 단축키</h3>
     <table>
-      <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>이전 / 다음 슬라이드 선택</td><td><kbd>F5</kbd></td><td>처음부터 송출</td></tr>
-      <tr><td><kbd>PgUp</kbd> / <kbd>PgDn</kbd></td><td>이전 / 다음 슬라이드</td><td><kbd>Shift</kbd>+<kbd>F5</kbd></td><td>현재부터 송출</td></tr>
-      <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>슬라이드 복제</td><td><kbd>Del</kbd></td><td>슬라이드 삭제</td></tr>
-      <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>새 텍스트 추가</td><td><kbd>Esc</kbd></td><td>선택 해제 / 송출 종료</td></tr>
-      <tr><td><kbd>Enter</kbd></td><td>의뢰 전송 (의뢰판)</td><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>줄바꿈</td></tr>
+      <tr><td><kbd>F5</kbd></td><td>처음부터 송출</td><td><kbd>Shift</kbd>+<kbd>F5</kbd></td><td>현재부터 송출</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>이전/다음 슬라이드</td><td><kbd>PgUp</kbd> <kbd>PgDn</kbd></td><td>이전/다음</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>슬라이드 복제</td><td><kbd>Del</kbd></td><td>선택 삭제</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>텍스트 추가</td><td><kbd>방향키</kbd></td><td>선택한 글자 미세이동</td></tr>
+      <tr><td><kbd>Shift</kbd>+클릭</td><td>여러 글자 선택</td><td><kbd>Esc</kbd></td><td>선택 해제 / 송출 종료</td></tr>
+      <tr><td><kbd>W</kbd></td><td>송출 중 대기화면</td><td><kbd>숫자</kbd>+<kbd>Enter</kbd></td><td>송출 중 해당 장으로 점프</td></tr>
+      <tr><td><kbd>Enter</kbd></td><td>게시판 등록</td><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>줄바꿈</td></tr>
     </table>
-    <div style="text-align:right;margin-top:14px;"><button class="btn g" id="keysClose">닫기</button></div>
+    <div style="text-align:right;margin-top:12px;"><button class="btn" id="keysClose">닫기</button></div>
   </div></div>
+
+  <div id="busy">작업 중…</div>
   <div class="toast" id="toast"></div>
-<!-- ?v= 는 캐시 무력화용. 코드 고칠 때마다 숫자만 올리면 브라우저가 무조건 새 파일을 받습니다. -->
-<script src="./kit-render.js?v=4"></script>
-<script type="module" src="./app.js?v=4"></script>
+<script src="./kit-render.js?v=5"></script>
+<script type="module" src="./app.js?v=5"></script>
 </body></html>

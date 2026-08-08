@@ -90,18 +90,44 @@ module.exports = async function handler(req, res){
   if(img){ content.push({ type:'image', source:{ type:'base64', media_type:img.media_type, data:img.data } }); }
   content.push({ type:'text', text: (text||'첨부한 이미지를 킷 규격 CG 스펙으로 재구성해줘.') + '\n\n스펙 JSON만 출력.' });
 
+  const HDR={ 'content-type':'application/json', 'x-api-key':KEY, 'anthropic-version':'2023-06-01' };
+  const ask = (model) => fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST', headers:HDR,
+    body:JSON.stringify({ model, max_tokens:1500, system:SYSTEM, messages:[{role:'user',content}] })
+  });
+
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{ 'content-type':'application/json', 'x-api-key':KEY, 'anthropic-version':'2023-06-01' },
-      body:JSON.stringify({ model:MODEL, max_tokens:1500, system:SYSTEM, messages:[{role:'user',content}] })
-    });
-    if(!r.ok){ const t=await r.text(); res.status(502).json({error:'Claude API '+r.status, detail:t.slice(0,400)}); return; }
+    let usedModel=MODEL;
+    let r=await ask(usedModel);
+
+    // 모델명이 이 계정에서 못 쓰는 경우 → 사용 가능한 모델을 조회해 자동 재시도
+    if(!r.ok && (r.status===404 || r.status===400)){
+      const firstErr=await r.text();
+      try{
+        const lr=await fetch('https://api.anthropic.com/v1/models',{headers:HDR});
+        if(lr.ok){
+          const lj=await lr.json();
+          const ids=(lj.data||[]).map(m=>m.id).filter(Boolean);
+          const pick=ids.find(i=>/sonnet/i.test(i)) || ids.find(i=>/haiku/i.test(i)) || ids[0];
+          if(pick && pick!==usedModel){ usedModel=pick; r=await ask(usedModel); }
+        }
+      }catch(_){}
+      if(!r.ok){
+        const t=await r.text();
+        res.status(502).json({ error:'Claude API '+r.status+' (model: '+usedModel+')', detail:(t||firstErr).slice(0,400) });
+        return;
+      }
+    }
+    if(!r.ok){
+      const t=await r.text();
+      res.status(502).json({ error:'Claude API '+r.status+' (model: '+usedModel+')', detail:t.slice(0,400) });
+      return;
+    }
     const j=await r.json();
     const txt=(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n');
     const spec=extractJSON(txt);
     if(!spec){ res.status(502).json({error:'스펙 파싱 실패', raw:txt.slice(0,300)}); return; }
-    res.status(200).json({ spec });
+    res.status(200).json({ spec, model:usedModel });
   }catch(e){
     res.status(500).json({error:'서버 오류', detail:String(e&&e.message||e)});
   }
