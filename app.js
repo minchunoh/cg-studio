@@ -546,15 +546,17 @@ $('keys').onclick=e=>{ if(e.target.id==='keys')e.target.style.display='none'; };
 
 /* ── 내보내기 ── */
 const loadImg=src=>new Promise((res,rej)=>{ const im=new Image(); im.crossOrigin='anonymous'; im.onload=()=>res(im); im.onerror=rej; im.src=src; });
+// 방송 규격 1920×1080으로 합성 (글자도 같은 배율로 커져 화질 손실 없음)
+const OUT_W=1920, OUT_H=1080, OUT_K=OUT_H/720;
 async function compositeSlide(sl){
-  const c=document.createElement('canvas'); c.width=1280; c.height=720; const g=c.getContext('2d');
-  g.fillStyle='#000'; g.fillRect(0,0,1280,720);
-  try{ g.drawImage(await loadImg(sl.img),0,0,1280,720); }catch(_){}
+  const c=document.createElement('canvas'); c.width=OUT_W; c.height=OUT_H; const g=c.getContext('2d');
+  g.fillStyle='#000'; g.fillRect(0,0,OUT_W,OUT_H);
+  try{ g.drawImage(await loadImg(sl.img),0,0,OUT_W,OUT_H); }catch(_){}
   (sl.overlays||[]).forEach(ov=>{
-    const fs=ov.fs; g.font=`${ov.fw||700} ${fs}px "Gmarket Sans","Malgun Gothic",sans-serif`;
+    const fs=ov.fs*OUT_K; g.font=`${ov.fw||700} ${fs}px "Gmarket Sans","Malgun Gothic",sans-serif`;
     g.textAlign=ov.align==='center'?'center':ov.align==='right'?'right':'left';
     g.textBaseline='top';
-    const x=ov.xf*1280, y=ov.yf*720;
+    const x=ov.xf*OUT_W, y=ov.yf*OUT_H;
     String(ov.text).split('\n').forEach((ln,i)=>{
       const yy=y+i*fs*1.15;
       if(ov.shadow){ g.save(); g.shadowColor='rgba(60,80,120,.55)'; g.shadowBlur=6; g.shadowOffsetX=2; g.shadowOffsetY=2; }
@@ -584,6 +586,109 @@ $('expPpt').onclick=async()=>{ const P=window.PptxGenJS||window.pptxgen;
       const s=p.addSlide(); s.addImage({data:await compositeSlide(PROJECT[i]),x:0,y:0,w:13.333,h:7.5}); }
     await p.writeFile({fileName:'CG_덱.pptx'}); toast(`PPT ${PROJECT.length}장 내보냄`);
   }catch(e){ toast('PPT 오류: '+e.message); } busy(false); };
+
+/* ── 킷 CG 만들기 (Claude 없이 사이트에서 직접 제작) ── */
+const MK_HINT={
+  bars:'첫 줄=계열 이름(쉼표), 다음 줄부터 "항목, 값, 값"',
+  line:'첫 줄=계열 이름(쉼표), 다음 줄부터 "항목, 값"',
+  rank_bars:'한 줄에 "이름, 값"',
+  theme_grid:'한 줄에 "분류: 종목1, 종목2"',
+  topic_line:'첫 줄=주제들(쉼표), 둘째 줄=현재 순서(1부터)',
+  quote:'첫 줄=인용문, 둘째 줄=말한 사람',
+  chart_frame:'한 줄에 하나씩 핵심 문장'
+};
+const MK_SAMPLE={
+  bars:'매출, 영업이익\n1분기, 12.4, 2.9\n2분기, 16.4, 5.5\n3분기, 17.6, 7.0\n4분기, 19.8, 8.1',
+  line:'종가\n3월, 87\n4월, 94\n5월, 110\n6월, 120\n7월, 118\n8월, 132',
+  rank_bars:'삼성전자, 420\nSK하이닉스, 160\nLG에너지솔루션, 90\n삼성바이오로직스, 70\n현대차, 52',
+  theme_grid:'휴머노이드: 레인보우로보틱스, 에스비비테크\n협동로봇: 두산로보틱스, 뉴로메카\n부품·감속기: 에스피지, 해성티피씨\n물류로봇: 티로보틱스',
+  topic_line:'반도체, 전력기기, 바이오, K뷰티\n2',
+  quote:'AI 반도체 수요는 내년까지 공급이 못 따라갈 것\n젠슨 황 · 엔비디아 CEO',
+  chart_frame:'코스피 2,680 마감 (+1.2%)\n외국인 5거래일 연속 순매수\n반도체·2차전지 강세, 바이오 약세'
+};
+function mkParse(){
+  const type=$('mkType').value, title=$('mkTitle').value.trim(), unit=$('mkUnit').value.trim(), source=$('mkSource').value.trim();
+  const lines=$('mkData').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const base={type,title:title||'제목을 입력하세요'}; if(unit)base.unit=unit; if(source)base.source=source;
+  const cells=s=>s.split(',').map(x=>x.trim()).filter(x=>x!=='');
+  try{
+    if(type==='bars'||type==='line'){
+      if(!lines.length) return base;
+      const names=cells(lines[0]);
+      const cats=[], data=names.map(()=>[]);
+      lines.slice(1).forEach(l=>{ const c=cells(l); if(!c.length)return;
+        cats.push(c[0]); names.forEach((_,i)=>data[i].push(parseFloat(c[i+1])||0)); });
+      return {...base, categories:cats, series:names.map(n=>({name:n})), data};
+    }
+    if(type==='rank_bars') return {...base, ranks:lines.map(l=>{const c=cells(l);return {label:c[0],value:parseFloat(c[1])||0};})};
+    if(type==='theme_grid') return {...base, groups:lines.map(l=>{ const i=l.indexOf(':');
+      return i<0?{cat:l,items:[]}:{cat:l.slice(0,i).trim(),items:cells(l.slice(i+1))}; })};
+    if(type==='topic_line'){ const st=cells(lines[0]||''); const act=Math.max(1,parseInt(lines[1]||'1',10)||1);
+      return {...base, title:title||'오늘의 토크 흐름', stations:st, active:Math.min(st.length,act)-1}; }
+    if(type==='quote') return {...base, quote:lines[0]||'', who:lines[1]||''};
+    return {...base, bullets:lines};
+  }catch(e){ return base; }
+}
+// spec → 입력폼 (수정용). 사이트에서 만든 CG는 데이터가 살아 있어 언제든 다시 고칠 수 있다.
+function mkFill(spec){
+  if(!spec)return;
+  $('mkType').value=spec.type||'bars';
+  $('mkTitle').value=spec.title||''; $('mkUnit').value=spec.unit||''; $('mkSource').value=spec.source||'';
+  let txt='';
+  const t=spec.type;
+  if(t==='bars'||t==='line'){
+    const names=(spec.series||[]).map(s=>s.name||'');
+    txt=names.join(', ')+'\n'+(spec.categories||[]).map((c,ci)=>
+      [c,...(spec.data||[]).map(d=>d[ci])].join(', ')).join('\n');
+  } else if(t==='rank_bars') txt=(spec.ranks||[]).map(r=>`${r.label}, ${r.value}`).join('\n');
+  else if(t==='theme_grid') txt=(spec.groups||[]).map(g=>`${g.cat}: ${(g.items||[]).join(', ')}`).join('\n');
+  else if(t==='topic_line') txt=(spec.stations||[]).join(', ')+'\n'+((spec.active||0)+1);
+  else if(t==='quote') txt=(spec.quote||'')+'\n'+(spec.who||'');
+  else txt=(spec.bullets||[]).join('\n');
+  $('mkData').value=txt;
+  $('mkHint').textContent='— '+(MK_HINT[$('mkType').value]||'');
+}
+let mkEditId=null;                       // 수정 중인 슬라이드 id (null이면 새로 추가)
+let mkT=null;
+async function mkPreview(){
+  try{ $('mkImg').src=await renderKitCG(mkParse()); }catch(e){ console.warn('preview',e); }
+}
+function mkSchedule(){ clearTimeout(mkT); mkT=setTimeout(mkPreview,220); }
+function mkOpen(editSpec,editId){
+  mkEditId=editId||null;
+  $('mk').style.display='flex';
+  $('mkAdd').textContent=mkEditId?'수정 반영':'슬라이드로 추가';
+  if(editSpec) mkFill(editSpec);
+  else if(!$('mkData').value) $('mkData').value=MK_SAMPLE[$('mkType').value]||'';
+  $('mkHint').textContent='— '+(MK_HINT[$('mkType').value]||''); mkPreview();
+}
+$('makeCG').onclick=()=>mkOpen();
+$('editCG').onclick=()=>{ const s=curSlide();
+  if(!s||!s.spec){ toast('이 슬라이드는 가져온 그림이라 수정할 수 없습니다 — 사이트에서 만든 CG만 수정됩니다'); return; }
+  mkOpen(s.spec,s.id); };
+$('mkClose').onclick=()=>$('mk').style.display='none';
+$('mk').onclick=e=>{ if(e.target.id==='mk')e.target.style.display='none'; };
+$('mkType').onchange=()=>{ $('mkHint').textContent='— '+(MK_HINT[$('mkType').value]||'');
+  $('mkData').value=MK_SAMPLE[$('mkType').value]||''; mkPreview(); };
+$('mkSample').onclick=()=>{ $('mkData').value=MK_SAMPLE[$('mkType').value]||''; mkPreview(); };
+['mkTitle','mkUnit','mkSource','mkData'].forEach(id=>$(id).addEventListener('input',mkSchedule));
+$('mkAdd').onclick=async()=>{
+  const spec=mkParse();
+  busy(true,'CG 만드는 중…');
+  try{
+    const img=await putImage(await renderKitCG(spec));      // 1920×1080 방송 해상도
+    if(mkEditId){
+      const s=PROJECT.find(x=>x.id===mkEditId);
+      if(s){ s.img=img; s.spec=spec; s.name=spec.title||s.name; }   // 데이터는 그대로 살아 있음
+      selId=mkEditId; toast('CG 수정 반영');
+    } else {
+      selId=addSlide(img, spec.title||'킷 CG', spec);
+      toast('CG 추가 — 언제든 "이 CG 수정"으로 고칠 수 있습니다');
+    }
+    mkEditId=null; renderAll(); pushState(); $('mk').style.display='none';
+  }catch(e){ toast('CG 오류: '+e.message); }
+  busy(false);
+};
 
 /* ── 팀 게시판 ── */
 let pendingAtt=null, fulfillId=null;

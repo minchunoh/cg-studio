@@ -155,6 +155,20 @@
   #presOv .po{position:absolute;white-space:pre-wrap;line-height:1.15;padding:1px 3px;}
   .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1b2740;color:#dfe8fb;padding:8px 15px;border-radius:8px;font-size:12px;opacity:0;transition:.3s;z-index:400;pointer-events:none;}
   #busy{position:fixed;inset:0;background:rgba(4,7,14,.6);z-index:350;display:none;align-items:center;justify-content:center;color:#cfe0ff;font-size:14px;font-weight:700;}
+  /* 킷 CG 만들기 */
+  #mk{position:fixed;inset:0;background:rgba(4,7,14,.78);z-index:260;display:none;align-items:center;justify-content:center;padding:20px;}
+  #mk .mkbox{background:#111a2c;border:1px solid #2c3a5c;border-radius:14px;width:min(1120px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;}
+  #mk .mkhd{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #1c2740;font-size:14px;font-weight:800;color:#cfe0ff;}
+  #mk .mkhd span{font-size:11px;font-weight:600;color:#6f7ea0;}
+  #mk .mkbody{display:flex;gap:14px;padding:14px 16px;overflow:auto;}
+  #mk .mkform{width:400px;flex:0 0 400px;}
+  #mk .mkprev{flex:1;min-width:0;}
+  #mk .mkprev img{width:100%;border-radius:8px;border:1px solid #22304d;background:#000;display:block;}
+  #mk label{display:block;font-size:11px;color:#8b9bc0;font-weight:700;margin:9px 0 4px;}
+  #mk .hint{font-weight:500;color:#6f7ea0;}
+  #mk input,#mk select,#mk textarea{width:100%;background:#0e1524;border:1px solid #2c3a5c;border-radius:7px;color:#e7ecf5;font-size:12px;padding:7px 9px;font-family:inherit;}
+  #mk textarea{height:190px;resize:vertical;line-height:1.6;font-family:ui-monospace,Menlo,monospace;}
+  #mk .two{display:flex;gap:8px;} #mk .two>div{flex:1;}
 </style></head>
 <body>
   <div class="top">
@@ -192,6 +206,8 @@
         </div>
         <div class="grp"><span class="lab">삽입</span>
           <button class="btn" id="addText">＋ 텍스트</button>
+          <button class="btn p" id="makeCG">✨ 킷 CG 만들기</button>
+          <button class="btn" id="editCG">✏ 이 CG 수정</button>
         </div>
         <div class="grp"><span class="lab">내보내기</span>
           <button class="btn" id="expImg">🖼 이미지(zip)</button>
@@ -367,6 +383,37 @@
       <tr><td><kbd>Enter</kbd></td><td>게시판 등록</td><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>줄바꿈</td></tr>
     </table>
     <div style="text-align:right;margin-top:12px;"><button class="btn" id="keysClose">닫기</button></div>
+  </div></div>
+
+  <!-- 킷 CG 만들기 -->
+  <div id="mk"><div class="mkbox">
+    <div class="mkhd">✨ 킷 CG 만들기 <span>방송 규격(남색 헤더·흰 카드·티커 안전지대·G마켓)으로 그려집니다</span>
+      <button class="btn" id="mkClose" style="margin-left:auto;">✕ 닫기</button></div>
+    <div class="mkbody">
+      <div class="mkform">
+        <label>종류</label>
+        <select id="mkType">
+          <option value="bars">막대그래프 (여러 항목 비교)</option>
+          <option value="line">꺾은선 (추이)</option>
+          <option value="rank_bars">순위 막대 (가로)</option>
+          <option value="theme_grid">관련주 박스 (분류별)</option>
+          <option value="topic_line">오늘의 토크 흐름 (지하철)</option>
+          <option value="quote">인용·말자막</option>
+          <option value="chart_frame">요약 카드 (불릿)</option>
+        </select>
+        <label>제목</label><input id="mkTitle" placeholder="예) SK하이닉스 분기 실적">
+        <div class="two"><div><label>단위</label><input id="mkUnit" placeholder="조원"></div>
+          <div><label>출처</label><input id="mkSource" placeholder="에프앤가이드"></div></div>
+        <label>내용 <span id="mkHint" class="hint"></span></label>
+        <textarea id="mkData" spellcheck="false"></textarea>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button class="btn" id="mkSample">예시 채우기</button>
+          <span class="sp" style="flex:1"></span>
+          <button class="btn p" id="mkAdd">슬라이드로 추가</button>
+        </div>
+      </div>
+      <div class="mkprev"><div class="lab" style="margin-bottom:6px;">미리보기 (자동 갱신)</div><img id="mkImg"></div>
+    </div>
   </div></div>
 
   <div id="busy">작업 중…</div>

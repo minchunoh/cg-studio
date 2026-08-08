@@ -205,9 +205,13 @@
     trainMarker(g,tx,ty,ACC);
   }
   const R={ bars:drawBars, line:drawLine, rank_bars:drawRank, theme_grid:drawGrid, quote:drawQuote, topic_line:drawTopicLine, chart_frame:drawFrame };
-  window.renderKitCG=async function(spec){
+  // 출력 해상도: 방송 규격 1920×1080 (좌표 계산은 1280×720 기준 그대로 두고 배율만 적용)
+  window.KIT_SCALE = 1.5;
+  window.renderKitCG=async function(spec,opts){
     await bgReady; await ensureFonts();
-    const c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d');
+    const sc=(opts&&opts.scale)||window.KIT_SCALE||1;
+    const c=document.createElement('canvas'); c.width=Math.round(W*sc); c.height=Math.round(H*sc);
+    const g=c.getContext('2d'); g.scale(sc,sc);
     const fn=R[spec&&spec.type]||drawFrame;
     try{ fn(g,spec||{}); }catch(e){ skyBG(g); g.fillStyle=NAVY; g.font=bold(28); g.textAlign='center'; g.textBaseline='middle'; g.fillText('CG 렌더 오류: '+e.message,W/2,H/2); }
     return c.toDataURL('image/png');
@@ -217,10 +221,10 @@
   // 요소 모션 재생: 막대 자라기 / 선 그려지기 / 순위 순차 등장. 1회 재생 후 완성 상태로 고정.
   window.playBuild = async function(imgEl, spec, opts){
     opts=opts||{};
-    const finalSrc=await window.renderKitCG({...spec, build:undefined});
+    const finalSrc=await window.renderKitCG({...spec, build:undefined});   // 최종=1920×1080
     if(!/^(bars|line|rank_bars)$/.test(spec&&spec.type||'')){ imgEl.src=finalSrc; return ()=>{}; }
     const dur=opts.dur||1600, steps=opts.steps||18, frames=[];
-    for(let k=0;k<=steps;k++) frames.push(await window.renderKitCG({...spec, build:k/steps}));
+    for(let k=0;k<=steps;k++) frames.push(await window.renderKitCG({...spec, build:k/steps},{scale:1}));
     let i=0, stop=false;
     const tick=()=>{ if(stop)return; if(i>=frames.length){ imgEl.src=finalSrc; return; } imgEl.src=frames[i++]; setTimeout(tick,dur/steps); };
     tick();
@@ -240,12 +244,12 @@
     opts=opts||{};
     const st=(spec.stations||spec.items||[]); const n=st.length;
     const active=Math.max(0,Math.min(n-1, spec.active!=null?spec.active:0));
-    const finalSrc=await window.renderKitCG({...spec, progress:active});
+    const finalSrc=await window.renderKitCG({...spec, progress:active});   // 최종=1920×1080
     if(n<2||active<1){ imgEl.src=finalSrc; return ()=>{}; }
     const from=active-1, dur=opts.dur||2000, steps=opts.steps||16;
     const ease=t=>t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;             // accel 50% / decel 50%
     const frames=[];
-    for(let k=0;k<=steps;k++){ const p=from+(active-from)*ease(k/steps); frames.push(await window.renderKitCG({...spec, progress:p})); }
+    for(let k=0;k<=steps;k++){ const p=from+(active-from)*ease(k/steps); frames.push(await window.renderKitCG({...spec, progress:p},{scale:1})); }
     let idx=0, stop=false;
     const tick=()=>{ if(stop)return; if(idx>=frames.length){ imgEl.src=finalSrc; return; } imgEl.src=frames[idx++]; setTimeout(tick, dur/steps); };
     tick();
