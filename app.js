@@ -587,6 +587,51 @@ $('expPpt').onclick=async()=>{ const P=window.PptxGenJS||window.pptxgen;
     await p.writeFile({fileName:'CG_덱.pptx'}); toast(`PPT ${PROJECT.length}장 내보냄`);
   }catch(e){ toast('PPT 오류: '+e.message); } busy(false); };
 
+/* ── 붙여넣기(Ctrl+V) → 슬라이드 / AI CG / 게시판 의뢰 ── */
+// Claude 프록시. 실패 사유를 그대로 던져 화면에 보여준다(조용히 넘어가지 않는다).
+async function aiGenerate(payload){
+  const res=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  let j=null; try{ j=await res.json(); }catch(_){}
+  if(!res.ok){ const m=(j&&(j.error||j.detail))?String(j.error||'')+(j.detail?(' / '+String(j.detail).slice(0,200)):''):('HTTP '+res.status); throw new Error(m); }
+  if(!j||!j.spec) throw new Error('스펙 없음'+(j&&j.raw?(' / '+String(j.raw).slice(0,120)):''));
+  return j.spec;
+}
+let pasteData=null;
+function openPaste(dataURL){ pasteData=dataURL; $('pasteImg').src=dataURL; $('paste').style.display='flex'; }
+function closePaste(){ $('paste').style.display='none'; pasteData=null; }
+$('pasteCancel').onclick=closePaste;
+$('paste').onclick=e=>{ if(e.target.id==='paste')closePaste(); };
+$('pasteSlide').onclick=async()=>{ const d=pasteData; closePaste(); busy(true,'슬라이드 추가 중…');
+  try{ selId=addSlide(await putImage(d),'붙여넣은 이미지'); renderAll(); pushState(); toast('슬라이드 추가'); }
+  catch(e){ toast('오류: '+e.message); } busy(false); };
+$('pasteBoard').onclick=()=>{ pendingAtt={type:'image',name:'붙여넣은 이미지',dataURL:pasteData}; closePaste();
+  renderAttPrev(); $('boardText').focus(); toast('게시판 첨부됨 — 설명을 적고 Enter'); };
+$('pasteAI').onclick=async()=>{
+  const d=pasteData; closePaste(); busy(true,'🤖 이미지를 읽어 킷 규격 CG로 만드는 중…');
+  try{
+    const spec=await aiGenerate({ text:'이 이미지의 데이터·항목을 읽어 킷 규격 CG 스펙으로 재구성해줘.', image:d });
+    const img=await putImage(await renderKitCG(spec));
+    selId=addSlide(img, spec.title||'AI 생성 CG', spec);      // spec 보존 → 나중에 수정 가능
+    renderAll(); pushState(); toast('✅ CG 생성 완료 — "이 CG 수정"으로 고칠 수 있습니다');
+  }catch(e){
+    console.error(e);
+    toast('CG 생성 실패: '+e.message);
+    alert('CG 생성 실패\n\n'+e.message+'\n\nClaude 연결(크레딧)이 필요합니다.\n연결 전에는 "그림 그대로 슬라이드에 넣기"나 "킷 CG 만들기"를 이용하세요.');
+  }
+  busy(false);
+};
+// 어디서든 Ctrl+V (입력창에 타이핑 중일 때는 제외)
+document.addEventListener('paste',e=>{
+  const a=document.activeElement;
+  if(a&&(a.tagName==='TEXTAREA'||a.tagName==='INPUT'||a.isContentEditable)) return;
+  const items=[...(e.clipboardData&&e.clipboardData.items||[])];
+  const it=items.find(x=>x.type&&x.type.startsWith('image/'));
+  if(!it)return;
+  e.preventDefault();
+  const f=it.getAsFile(); if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>openPaste(rd.result); rd.readAsDataURL(f);
+});
+
 /* ── 킷 CG 만들기 (Claude 없이 사이트에서 직접 제작) ── */
 const MK_HINT={
   bars:'첫 줄=계열 이름(쉼표), 다음 줄부터 "항목, 값, 값"',
@@ -595,8 +640,13 @@ const MK_HINT={
   theme_grid:'한 줄에 "분류: 종목1, 종목2"',
   topic_line:'첫 줄=주제들(쉼표), 둘째 줄=현재 순서(1부터)',
   quote:'첫 줄=인용문, 둘째 줄=말한 사람',
+  indicator:'한 줄에 "항목: 값" (항목=ETF/야간선물/WTI/브렌트유/반도체/환율/금리). 하락(-)은 자동 남색, 상승은 빨강',
+  three_line:'한 줄에 하나씩, 최대 3줄',
   chart_frame:'한 줄에 하나씩 핵심 문장'
 };
+// 지표 항목 키워드 → 슬롯
+const IND_KEYS=[['ewy',/etf|ewy|msci/i],['night',/야간|선물/],['wti',/wti/i],['brent',/브렌트/],
+  ['sox',/반도체|필라|sox/i],['fx',/환율|달러/],['ust',/금리|국채|10년/]];
 const MK_SAMPLE={
   bars:'매출, 영업이익\n1분기, 12.4, 2.9\n2분기, 16.4, 5.5\n3분기, 17.6, 7.0\n4분기, 19.8, 8.1',
   line:'종가\n3월, 87\n4월, 94\n5월, 110\n6월, 120\n7월, 118\n8월, 132',
@@ -604,6 +654,8 @@ const MK_SAMPLE={
   theme_grid:'휴머노이드: 레인보우로보틱스, 에스비비테크\n협동로봇: 두산로보틱스, 뉴로메카\n부품·감속기: 에스피지, 해성티피씨\n물류로봇: 티로보틱스',
   topic_line:'반도체, 전력기기, 바이오, K뷰티\n2',
   quote:'AI 반도체 수요는 내년까지 공급이 못 따라갈 것\n젠슨 황 · 엔비디아 CEO',
+  indicator:'MSCI 한국 ETF: +2.00%\n야간선물: +0.36%\nWTI: $80.34(-5.11%)\n브렌트유: $83.77(-4.73%)\n필라델피아 반도체: +1.06%\n환율: 1,429.34 (-0.46원)\n美10년물 금리: 4.68%',
+  three_line:'뉴욕증시, 3대 지수 일제히 상승 마감\n엔비디아 실적 기대에 반도체주 강세\n국제유가는 공급 우려 완화에 하락',
   chart_frame:'코스피 2,680 마감 (+1.2%)\n외국인 5거래일 연속 순매수\n반도체·2차전지 강세, 바이오 약세'
 };
 function mkParse(){
@@ -626,6 +678,20 @@ function mkParse(){
     if(type==='topic_line'){ const st=cells(lines[0]||''); const act=Math.max(1,parseInt(lines[1]||'1',10)||1);
       return {...base, title:title||'오늘의 토크 흐름', stations:st, active:Math.min(st.length,act)-1}; }
     if(type==='quote') return {...base, quote:lines[0]||'', who:lines[1]||''};
+    if(type==='indicator'){
+      const values={}, subs={};
+      lines.forEach(l=>{ const i=l.indexOf(':'); if(i<0)return;
+        const name=l.slice(0,i).trim(), v=l.slice(i+1).trim();
+        const hit=IND_KEYS.find(([,re])=>re.test(name)); if(!hit)return;
+        // "1,429.34 (-0.46원)" 처럼 괄호가 뒤에 따로 오면 작은 글씨로 분리
+        const m=/^(.*?)\s+(\([^)]*\))\s*$/.exec(v);
+        if(m){ values[hit[0]]=m[1].trim(); subs[hit[0]]=m[2]; } else values[hit[0]]=v;
+      });
+      // 템플릿에 제목이 이미 인쇄돼 있으므로 사용자가 직접 적었을 때만 제목을 덧그린다
+      return {...base, title:(title?title:''), values, subs};
+    }
+    // 메모지 템플릿에 "미증시 3줄 요약" 제목이 인쇄돼 있음 → 직접 적었을 때만 덧그림
+    if(type==='three_line') return {...base, title:(title?title:''), lines:lines.slice(0,3)};
     return {...base, bullets:lines};
   }catch(e){ return base; }
 }
@@ -644,6 +710,10 @@ function mkFill(spec){
   else if(t==='theme_grid') txt=(spec.groups||[]).map(g=>`${g.cat}: ${(g.items||[]).join(', ')}`).join('\n');
   else if(t==='topic_line') txt=(spec.stations||[]).join(', ')+'\n'+((spec.active||0)+1);
   else if(t==='quote') txt=(spec.quote||'')+'\n'+(spec.who||'');
+  else if(t==='indicator'){ const L={ewy:'MSCI 한국 ETF',night:'야간선물',wti:'WTI',brent:'브렌트유',sox:'필라델피아 반도체',fx:'환율',ust:'美10년물 금리'};
+    txt=Object.keys(L).filter(k=>(spec.values||{})[k]!=null&&spec.values[k]!=='')
+      .map(k=>`${L[k]}: ${spec.values[k]}${(spec.subs&&spec.subs[k])?' '+spec.subs[k]:''}`).join('\n'); }
+  else if(t==='three_line') txt=(spec.lines||[]).join('\n');
   else txt=(spec.bullets||[]).join('\n');
   $('mkData').value=txt;
   $('mkHint').textContent='— '+(MK_HINT[$('mkType').value]||'');
@@ -663,6 +733,18 @@ function mkOpen(editSpec,editId){
   $('mkHint').textContent='— '+(MK_HINT[$('mkType').value]||''); mkPreview();
 }
 $('makeCG').onclick=()=>mkOpen();
+// 예전 버전으로 저장된 CG를 현재 규격(진짜 방송 배경 · 1920×1080)으로 다시 그린다
+$('redrawCG').onclick=async()=>{
+  const targets=PROJECT.filter(s=>s.spec);
+  if(!targets.length){ toast('다시 그릴 CG가 없습니다 (가져온 그림은 대상이 아닙니다)'); return; }
+  busy(true,`CG ${targets.length}장 다시 그리는 중…`);
+  try{
+    for(let i=0;i<targets.length;i++){ busy(true,`다시 그리는 중 ${i+1}/${targets.length}`);
+      targets[i].img=await putImage(await renderKitCG(targets[i].spec)); }
+    renderAll(); pushState(); toast(`${targets.length}장 다시 그렸습니다 (1920×1080)`);
+  }catch(e){ toast('오류: '+e.message); }
+  busy(false);
+};
 $('editCG').onclick=()=>{ const s=curSlide();
   if(!s||!s.spec){ toast('이 슬라이드는 가져온 그림이라 수정할 수 없습니다 — 사이트에서 만든 CG만 수정됩니다'); return; }
   mkOpen(s.spec,s.id); };
@@ -767,9 +849,10 @@ window.addEventListener('resize',()=>{ renderCursors(); renderOverlays(); });
   wireSync();
   await loadProject();
   if(!PROJECT.length){
-    const img=await renderKitCG({type:'chart_frame',title:'CG 스튜디오에 오신 것을 환영합니다',source:'한경글로벌TV · 머니플러스',
-      bullets:['상단 홈 → PDF(PPT 저장본) 로 완성된 CG를 한 번에 불러옵니다','슬라이드를 드래그해 순서를 바꾸고 모션 탭에서 전환을 줍니다','▶ 송출 (F5) 로 발표자 화면이 열립니다']});
-    PROJECT=[{id:'s0',name:'시작',img,transition:'fade',overlays:[]}]; selId='s0';
+    // 시작 슬라이드도 spec을 함께 저장 → 나중에 규격이 바뀌면 "다시 그리기"로 갱신 가능
+    const spec={type:'chart_frame',title:'CG 스튜디오에 오신 것을 환영합니다',source:'한경글로벌TV · 머니플러스',
+      bullets:['홈 → ✨ 킷 CG 만들기 로 방송 규격 CG를 직접 만듭니다','홈 → PDF/PPT/이미지 로 완성된 CG를 불러옵니다','▶ 송출 (F5) 로 발표자 화면이 열립니다']};
+    PROJECT=[{id:'s0',name:'시작',img:await renderKitCG(spec),transition:'fade',overlays:[],spec}]; selId='s0';
   }
   wireSplit('splitL','.sorter',120,420,'cg_w_sorter',false);
   wireSplit('splitR','.side',200,560,'cg_w_side',true);

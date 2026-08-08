@@ -24,7 +24,8 @@
   const BG={};
   function loadImg(src){ return new Promise((res)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src=src; }); }
   const V='?v=5';   // 캐시 무력화
-  const bgReady=(async()=>{ BG.card=await loadImg('./bg_card.png'+V); BG.sky=await loadImg('./bg_sky.png'+V); BG.logo=await loadImg('./moneyplus_logo.png'+V); })();
+  const bgReady=(async()=>{ BG.card=await loadImg('./bg_card.png'+V); BG.sky=await loadImg('./bg_sky.png'+V); BG.logo=await loadImg('./moneyplus_logo.png'+V);
+    BG.ind=await loadImg('./bg_indicator.png'+V); BG.note=await loadImg('./bg_note.png'+V); })();
   window.KIT_VERSION='v5';   // 배포 확인용 표시
   function ensureFonts(){ if(!document.fonts||!document.fonts.load) return Promise.resolve();
     return Promise.all([document.fonts.load('700 40px "Gmarket Sans"'),document.fonts.load('500 22px "Gmarket Sans"')]).catch(()=>{}); }
@@ -204,7 +205,54 @@
     for(let k=1;k<P.length;k++){ if(trainArc<=arc[k]||k===P.length-1){const d=arc[k]-arc[k-1],t=d?(trainArc-arc[k-1])/d:0;tx=P[k-1].x+(P[k].x-P[k-1].x)*t;ty=P[k-1].y+(P[k].y-P[k-1].y)*t;break;} }
     trainMarker(g,tx,ty,ACC);
   }
-  const R={ bars:drawBars, line:drawLine, rank_bars:drawRank, theme_grid:drawGrid, quote:drawQuote, topic_line:drawTopicLine, chart_frame:drawFrame };
+  // ── 지표 (韓증시 영향 글로벌 지표) : 아이콘 템플릿 위 수치만 얹음 ──
+  // 색 규칙(방송 실측): 하락(-) = 남색 19108A, 상승/무부호 = 빨강 FF0000, 야간선물 하락 = 하늘 DAE3F3
+  const IND_SLOTS=[  // 킷 좌표(inch)를 px로: ×96
+    {key:'ewy',   label:'MSCI 한국 ETF',  cx:275, cy:231},
+    {key:'night', label:'야간선물',        cx:672, cy:232, downColor:'#DAE3F3'},
+    {key:'wti',   label:'WTI',            cx:1025,cy:213, pt:18},
+    {key:'brent', label:'브렌트유',        cx:1025,cy:283, pt:18},
+    {key:'sox',   label:'필라델피아 반도체',cx:275, cy:480},
+    {key:'fx',    label:'원·달러 환율',     cx:639, cy:485, pt:28},
+    {key:'ust',   label:'美10년물 국채금리',cx:1018,cy:492}
+  ];
+  function drawIndicator(g,spec){
+    if(BG.ind)g.drawImage(BG.ind,0,0,W,H); else skyBG(g);
+    if(spec.title){ g.textAlign='center'; g.textBaseline='middle';
+      const fp=fit(g,spec.title,W-160,38,24,'bold'); g.font=bold(fp);
+      g.fillStyle='#19108A'; g.fillText(spec.title,W/2,66); }
+    const vals=spec.values||{};
+    IND_SLOTS.forEach(s=>{
+      const raw=vals[s.key]; if(raw==null||raw==='')return;
+      const txt=String(raw), sub=(spec.subs&&spec.subs[s.key])||'';
+      const down=/-/.test(txt)||/-/.test(sub);
+      const color=down?(s.downColor||'#19108A'):'#FF0000';
+      const pt=s.pt||30, subPt=Math.round(pt*0.62);
+      g.fillStyle=color; g.textAlign='center';
+      if(sub){ g.textBaseline='bottom'; g.font=bold(pt); g.fillText(txt,s.cx,s.cy+2);
+        g.textBaseline='top'; g.font=bold(subPt); g.fillText(sub,s.cx,s.cy+6); }
+      else { g.textBaseline='middle'; g.font=bold(pt); g.fillText(txt,s.cx,s.cy); }
+    });
+  }
+  // ── 미증시 3줄 요약 (메모지 양식) ──
+  function drawThreeLine(g,spec){
+    if(BG.note)g.drawImage(BG.note,0,0,W,H); else skyBG(g);
+    if(spec.title){ g.textAlign='center'; g.textBaseline='middle';
+      const fp=fit(g,spec.title,760,34,20,'bold'); g.font=bold(fp);
+      g.fillStyle='#111111'; g.fillText(spec.title,640,145); }
+    const rows=[272,390,515], TX=348, TW=1010-TX;   // 번호 오른쪽 ~ 메모지 안쪽
+    (spec.lines||[]).slice(0,3).forEach((ln,i)=>{
+      const t=String(ln||''); if(!t.trim())return;
+      let pt=32; g.font=bold(pt);
+      if(g.measureText(t).width>TW){ pt=Math.max(17,Math.floor(pt*TW/g.measureText(t).width)); }
+      g.font=bold(pt); g.fillStyle='#19108A'; g.textAlign='left'; g.textBaseline='middle';
+      const lines=wrap(g,t,TW).slice(0,2), lh=pt*1.15;
+      lines.forEach((l,li)=>g.fillText(l,TX,rows[i]-(lines.length-1)*lh/2+li*lh));
+    });
+  }
+
+  const R={ bars:drawBars, line:drawLine, rank_bars:drawRank, theme_grid:drawGrid, quote:drawQuote, topic_line:drawTopicLine,
+            indicator:drawIndicator, three_line:drawThreeLine, chart_frame:drawFrame };
   // 출력 해상도: 방송 규격 1920×1080 (좌표 계산은 1280×720 기준 그대로 두고 배율만 적용)
   window.KIT_SCALE = 1.5;
   window.renderKitCG=async function(spec,opts){

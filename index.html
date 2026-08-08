@@ -155,6 +155,14 @@
   #presOv .po{position:absolute;white-space:pre-wrap;line-height:1.15;padding:1px 3px;}
   .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1b2740;color:#dfe8fb;padding:8px 15px;border-radius:8px;font-size:12px;opacity:0;transition:.3s;z-index:400;pointer-events:none;}
   #busy{position:fixed;inset:0;background:rgba(4,7,14,.6);z-index:350;display:none;align-items:center;justify-content:center;color:#cfe0ff;font-size:14px;font-weight:700;}
+  /* 붙여넣기 */
+  #paste{position:fixed;inset:0;background:rgba(4,7,14,.8);z-index:270;display:none;align-items:center;justify-content:center;padding:20px;}
+  #paste .pbox{background:#111a2c;border:1px solid #2c3a5c;border-radius:14px;padding:16px;max-width:760px;width:100%;}
+  #paste .phd{font-size:14px;font-weight:800;color:#cfe0ff;margin-bottom:10px;}
+  #paste img{width:100%;max-height:46vh;object-fit:contain;background:#000;border-radius:8px;border:1px solid #22304d;}
+  #paste .pacts{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;}
+  #paste .pacts .btn{flex:1;min-width:150px;}
+  #paste .pnote{font-size:10px;color:#6f7ea0;margin-top:8px;}
   /* 킷 CG 만들기 */
   #mk{position:fixed;inset:0;background:rgba(4,7,14,.78);z-index:260;display:none;align-items:center;justify-content:center;padding:20px;}
   #mk .mkbox{background:#111a2c;border:1px solid #2c3a5c;border-radius:14px;width:min(1120px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;}
@@ -208,6 +216,7 @@
           <button class="btn" id="addText">＋ 텍스트</button>
           <button class="btn p" id="makeCG">✨ 킷 CG 만들기</button>
           <button class="btn" id="editCG">✏ 이 CG 수정</button>
+          <button class="btn" id="redrawCG" title="예전 버전으로 저장된 CG를 지금 규격·해상도로 다시 그립니다">🔄 다시 그리기</button>
         </div>
         <div class="grp"><span class="lab">내보내기</span>
           <button class="btn" id="expImg">🖼 이미지(zip)</button>
@@ -398,6 +407,8 @@
           <option value="rank_bars">순위 막대 (가로)</option>
           <option value="theme_grid">관련주 박스 (분류별)</option>
           <option value="topic_line">오늘의 토크 흐름 (지하철)</option>
+          <option value="indicator">韓증시 영향 글로벌 지표</option>
+          <option value="three_line">미증시 3줄 요약 (메모지)</option>
           <option value="quote">인용·말자막</option>
           <option value="chart_frame">요약 카드 (불릿)</option>
         </select>
@@ -414,6 +425,19 @@
       </div>
       <div class="mkprev"><div class="lab" style="margin-bottom:6px;">미리보기 (자동 갱신)</div><img id="mkImg"></div>
     </div>
+  </div></div>
+
+  <!-- 붙여넣기 처리 -->
+  <div id="paste"><div class="pbox">
+    <div class="phd">📋 이미지를 붙여넣었습니다 — 어떻게 할까요?</div>
+    <img id="pasteImg">
+    <div class="pacts">
+      <button class="btn p" id="pasteAI">🤖 이 이미지로 CG 만들기 (킷 규격 재작도)</button>
+      <button class="btn" id="pasteSlide">🖼 그림 그대로 슬라이드에 넣기</button>
+      <button class="btn" id="pasteBoard">📋 게시판에 의뢰로 올리기</button>
+      <button class="btn" id="pasteCancel" style="background:#3a2233;color:#ff9aa8;">취소</button>
+    </div>
+    <div class="pnote">CG 만들기는 Claude 연결이 필요합니다. 연결 전이면 오류 사유가 그대로 표시됩니다.</div>
   </div></div>
 
   <div id="busy">작업 중…</div>
