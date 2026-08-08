@@ -9,7 +9,11 @@
   const W=1280, H=720;
   const NAVY='#0D004E', RED='#C00000', BLUE='#2F6FD6', INK='#111111', GRAY='#4a5568', NOTE='#26304A';
   const FB='"Gmarket Sans","Malgun Gothic",sans-serif';
-  const bold=(px)=>`700 ${px}px ${FB}`, med=(px)=>`500 ${px}px ${FB}`;
+  // ★ 킷(PPT)은 글자 크기를 pt로 지정한다. 96dpi 캔버스에서 1pt = 96/72 = 1.3333px.
+  //   킷과 같은 크기로 보이려면 반드시 이 변환을 거쳐야 한다(안 하면 33% 작게 나옴).
+  const PT = 96/72;
+  const px = (pt)=>Math.round(pt*PT*10)/10;
+  const bold=(pt)=>`700 ${px(pt)}px ${FB}`, med=(pt)=>`500 ${px(pt)}px ${FB}`;
 
   // ── 실측 좌표 (px, 96dpi 환산) ──
   const CARD_L=137, CARD_R=1143, CARD_W=CARD_R-CARD_L;
@@ -23,10 +27,10 @@
 
   const BG={};
   function loadImg(src){ return new Promise((res)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src=src; }); }
-  const V='?v=7';   // 캐시 무력화
+  const V='?v=8';   // 캐시 무력화
   const bgReady=(async()=>{ BG.card=await loadImg('./bg_card.png'+V); BG.sky=await loadImg('./bg_sky.png'+V); BG.logo=await loadImg('./moneyplus_logo.png'+V);
     BG.ind=await loadImg('./bg_indicator.png'+V); BG.note=await loadImg('./bg_note.png'+V); })();
-  window.KIT_VERSION='v7-킷폰트';   // 배포 확인용 표시
+  window.KIT_VERSION='v8-pt변환';   // 배포 확인용 표시
   function ensureFonts(){ if(!document.fonts||!document.fonts.load) return Promise.resolve();
     return Promise.all([document.fonts.load('700 40px "Gmarket Sans"'),document.fonts.load('500 22px "Gmarket Sans"')]).catch(()=>{}); }
 
@@ -148,7 +152,7 @@
       g.fillStyle='rgba(255,255,255,.97)'; rr(g,x,y,cw,ch,12); g.fill();
       const hH=Math.max(34,Math.min(56,ch*0.4)); g.fillStyle=NAVY; rr(g,x,y,cw,hH,12); g.fill(); g.fillRect(x,y+hH-12,cw,12);
       g.fillStyle='#fff'; g.textAlign='center'; g.textBaseline='middle'; const np=fit(g,c.name,cw-20,21,12,'bold'); g.font=bold(np); g.fillText(c.name,x+cw/2,y+hH/2);
-      g.fillStyle='#243043'; g.font=med(14); g.textBaseline='top'; const L=wrap(g,c.desc,cw-24).slice(0,4),lh=20,by=y+hH+(ch-hH-L.length*lh)/2; L.forEach((ln,li)=>g.fillText(ln,x+cw/2,by+li*lh));
+      g.fillStyle='#243043'; g.font=med(14); g.textBaseline='top'; const L=wrap(g,c.desc,cw-24).slice(0,4),lh=px(15),by=y+hH+(ch-hH-L.length*lh)/2; L.forEach((ln,li)=>g.fillText(ln,x+cw/2,by+li*lh));
     });
   }
   function drawQuote(g,spec){
@@ -156,7 +160,7 @@
     g.fillStyle='rgba(255,255,255,.95)'; rr(g,150,TICKER_TOP+16,W-300,TICKER_BOTTOM-TICKER_TOP-34,18); g.fill();
     g.fillStyle='#cfe0f5'; g.font=bold(120); g.textAlign='left'; g.textBaseline='top'; g.fillText('“',185,TICKER_TOP+14);
     g.fillStyle=NAVY; g.textAlign='center'; g.textBaseline='middle'; const fp=fit(g,spec.quote||'',W-420,40,24,'bold'); g.font=bold(fp);
-    const L=wrap(g,spec.quote||'',W-420); const cy=(TICKER_TOP+TICKER_BOTTOM)/2-(spec.who?18:0),lh=fp*1.3;
+    const L=wrap(g,spec.quote||'',W-420); const cy=(TICKER_TOP+TICKER_BOTTOM)/2-(spec.who?18:0),lh=px(fp)*1.3;
     L.slice(0,4).forEach((ln,i)=>g.fillText(ln,W/2,cy-(L.length-1)*lh/2+i*lh));
     if(spec.who){ g.fillStyle=BLUE; g.font=med(24); g.fillText('— '+spec.who,W/2,TICKER_BOTTOM-64); }
   }
@@ -227,7 +231,7 @@
       const txt=String(raw), sub=(spec.subs&&spec.subs[s.key])||'';
       const down=/-/.test(txt)||/-/.test(sub);
       const color=down?(s.downColor||'#19108A'):'#FF0000';
-      const pt=s.pt||30, subPt=Math.round(pt*0.62);
+      const pt=s.pt||32, subPt=Math.round(pt*0.62);
       g.fillStyle=color; g.textAlign='center';
       if(sub){ g.textBaseline='bottom'; g.font=bold(pt); g.fillText(txt,s.cx,s.cy+2);
         g.textBaseline='top'; g.font=bold(subPt); g.fillText(sub,s.cx,s.cy+6); }
@@ -246,7 +250,7 @@
       let pt=32; g.font=bold(pt);
       if(g.measureText(t).width>TW){ pt=Math.max(17,Math.floor(pt*TW/g.measureText(t).width)); }
       g.font=bold(pt); g.fillStyle='#19108A'; g.textAlign='left'; g.textBaseline='middle';
-      const lines=wrap(g,t,TW).slice(0,2), lh=pt*1.15;
+      const lines=wrap(g,t,TW).slice(0,2), lh=px(pt)*1.15;
       lines.forEach((l,li)=>g.fillText(l,TX,rows[i]-(lines.length-1)*lh/2+li*lh));
     });
   }
@@ -368,7 +372,7 @@
       const txt=Array.isArray(r.text)?r.text:[r.text||''];
       let fs=19; g.font=bold(fs);
       const all=txt.join(' '); if(g.measureText(all).width>RW-32){ fs=17; }
-      g.font=med(fs); const L=wrap(g,all,RW-32).slice(0,2), lh=fs*1.3;
+      g.font=med(fs); const L=wrap(g,all,RW-32).slice(0,2), lh=px(fs)*1.3;
       L.forEach((ln,li)=>g.fillText(ln,RX+16,y+rowH/2-(L.length-1)*lh/2+li*lh));
       y+=rowH+gap; });
   }
@@ -390,7 +394,7 @@
       g.fillStyle='#1A1A1A'; g.textAlign='left';
       const lines=Array.isArray(it.lines)?it.lines:[it.text||''];
       let fs=21; g.font=med(fs); const L=[]; lines.forEach(l=>L.push(...wrap(g,l,X1-CX-36)));
-      const lh=fs*1.32; L.slice(0,3).forEach((ln,li)=>g.fillText(ln,CX+18,y+rowH/2-(Math.min(L.length,3)-1)*lh/2+li*lh));
+      const lh=px(fs)*1.32; L.slice(0,3).forEach((ln,li)=>g.fillText(ln,CX+18,y+rowH/2-(Math.min(L.length,3)-1)*lh/2+li*lh));
       y+=rowH+gap; });
   }
   // 기존 → 변경 (셰브론)
@@ -430,7 +434,7 @@
       g.fillStyle='#fff'; rr(g,RX,y,RW,rowH,6); g.fill(); g.strokeStyle='#D7DEEC'; g.stroke();
       g.fillStyle='#1A1A1A'; let fs=18; g.font=bold(fs);
       if(g.measureText(r.cos).width>RW-30){ fs=16; g.font=bold(fs); }
-      const L=wrap(g,r.cos,RW-30).slice(0,2), lh=fs*1.3;
+      const L=wrap(g,r.cos,RW-30).slice(0,2), lh=px(fs)*1.3;
       L.forEach((ln,li)=>g.fillText(ln,RX+15,y+rowH/2-(L.length-1)*lh/2+li*lh));
       y+=rowH+gap; });
   }
@@ -446,7 +450,7 @@
       let p=fit(g,it.date||'',210,19,12,'bold'); g.font=bold(p); g.fillText(it.date||'',LX-22,cy);
       g.beginPath(); g.arc(LX,cy,7,0,7); g.fillStyle=ACC; g.fill(); g.strokeStyle='#fff'; g.lineWidth=2; g.stroke();
       g.fillStyle='#222'; g.font=med(18); g.textAlign='left';
-      const L=wrap(g,it.text||'',A.x+A.w-(LX+28)).slice(0,2), lh=23;
+      const L=wrap(g,it.text||'',A.x+A.w-(LX+28)).slice(0,2), lh=px(17);
       L.forEach((ln,li)=>g.fillText(ln,LX+28,cy-(L.length-1)*lh/2+li*lh)); });
   }
   // 단계 흐름 (화살표)
@@ -461,7 +465,7 @@
       g.fillStyle='#fff'; g.textAlign='center'; g.textBaseline='middle';
       let p=fit(g,s.title||s.name||'',bw-20,22,13,'bold'); g.font=bold(p); g.fillText(s.title||s.name||'',x+bw/2,cy-bh/2+26);
       g.fillStyle='#243043'; g.font=med(17); g.textBaseline='top';
-      const L=wrap(g,s.desc||s.text||'',bw-28).slice(0,4), lh=24;
+      const L=wrap(g,s.desc||s.text||'',bw-28).slice(0,4), lh=px(18);
       L.forEach((ln,li)=>g.fillText(ln,x+bw/2,cy-bh/2+74+li*lh));
       if(i<n-1){ const ax=x+bw+8, aw=gap-16;
         g.fillStyle='#C00000'; g.beginPath();
@@ -490,7 +494,7 @@
     g.fillStyle='#cfe0f5'; g.font=bold(96); g.textAlign='left'; g.textBaseline='top'; g.fillText('“',BX-14,TICKER_TOP+6);
     g.fillStyle=NAVY; g.textAlign='left'; g.textBaseline='middle';
     const fp=fit(g,spec.quote||'',BW,36,20,'bold'); g.font=bold(fp);
-    const L=wrap(g,spec.quote||'',BW).slice(0,4), lh=fp*1.35, cy=PY-20;
+    const L=wrap(g,spec.quote||'',BW).slice(0,4), lh=px(fp)*1.35, cy=PY-20;
     L.forEach((ln,i)=>g.fillText(ln,BX,cy-(L.length-1)*lh/2+i*lh));
     if(spec.who){ g.fillStyle='#2F6FD6'; g.font=med(24); g.fillText('— '+spec.who,BX,TICKER_BOTTOM-52); }
   }
