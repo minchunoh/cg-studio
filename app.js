@@ -668,14 +668,29 @@ function mkSpec(){
 }
 async function mkPreview(){
   try{
+    if(typeof window.kitAuto!=='function'){
+      $('mkHint').textContent='⚠ 렌더러가 예전 버전입니다 — Ctrl+Shift+R(맥 Cmd+Shift+R)로 새로고침해 주세요.';
+      $('mkHint').style.color='#ff9aa8'; return;
+    }
     const spec=mkSpec();
     if(mkAutoType){ $('mkType').value=spec.type; }
     $('mkAuto').textContent=mkAutoType?'자동 판단':'직접 선택';
     $('mkAuto').style.background=mkAutoType?'#12331f':'#3a3212';
     $('mkAuto').style.color=mkAutoType?'#7fe0a0':'#ffd98a';
-    $('mkHint').textContent='※ 양식이 마음에 안 들면 위 목록에서 직접 고르세요. 맨 위에 "제목:", "단위:", "출처:"를 적으면 반영됩니다.';
+    // 지표인데 인식된 항목이 없으면 원인을 바로 알려준다
+    let warn='';
+    if(spec.type==='indicator'){
+      const cnt=Object.keys(spec.values||{}).length;
+      warn = cnt? `✔ 지표 ${cnt}개 인식됨` : '⚠ 지표 항목을 하나도 못 읽었습니다 — "WTI $77.29(+2.75%)"처럼 항목명 + 값 형태로 적어주세요';
+    }
+    $('mkHint').style.color=warn.startsWith('⚠')?'#ff9aa8':'#6f7ea0';
+    $('mkHint').textContent=(warn?warn+' · ':'')+'양식이 틀리면 위 목록에서 직접 고르세요. 맨 위에 "제목:", "단위:", "출처:" 사용 가능.';
     $('mkImg').src=await renderKitCG(spec);
-  }catch(e){ console.warn('preview',e); }
+  }catch(e){
+    console.error('preview',e);
+    $('mkHint').style.color='#ff9aa8';
+    $('mkHint').textContent='⚠ 미리보기 오류: '+(e&&e.message||e);
+  }
 }
 function mkSchedule(){ clearTimeout(mkT); mkT=setTimeout(mkPreview,260); }
 function mkFill(spec){
@@ -827,6 +842,7 @@ window.addEventListener('resize',()=>{ renderCursors(); renderOverlays(); });
   }
   wireSplit('splitL','.sorter',120,420,'cg_w_sorter',false);
   wireSplit('splitR','.side',200,560,'cg_w_side',true);
+  const sv=$('stVer'); if(sv) sv.textContent='버전 '+(window.KIT_VERSION||'?');
   renderAll(); presence(true);
   setInterval(()=>{ presence(); const now=performance.now(); let ch=false;
     for(const [k,p] of peers){ if(now-p.last>6000){ peers.delete(k); ch=true; } }

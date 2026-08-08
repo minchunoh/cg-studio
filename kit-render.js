@@ -23,10 +23,10 @@
 
   const BG={};
   function loadImg(src){ return new Promise((res)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src=src; }); }
-  const V='?v=5';   // 캐시 무력화
+  const V='?v=6';   // 캐시 무력화
   const bgReady=(async()=>{ BG.card=await loadImg('./bg_card.png'+V); BG.sky=await loadImg('./bg_sky.png'+V); BG.logo=await loadImg('./moneyplus_logo.png'+V);
     BG.ind=await loadImg('./bg_indicator.png'+V); BG.note=await loadImg('./bg_note.png'+V); })();
-  window.KIT_VERSION='v5';   // 배포 확인용 표시
+  window.KIT_VERSION='v6-지표수정';   // 배포 확인용 표시
   function ensureFonts(){ if(!document.fonts||!document.fonts.load) return Promise.resolve();
     return Promise.all([document.fonts.load('700 40px "Gmarket Sans"'),document.fonts.load('500 22px "Gmarket Sans"')]).catch(()=>{}); }
 
